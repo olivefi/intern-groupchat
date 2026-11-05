@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.gc/bin/gc\" ensure-bridge >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

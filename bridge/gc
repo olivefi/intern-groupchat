@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""gc: control the local gc-bridge.
+
+  gc ensure-bridge                 start tailscale (userspace) and the bridge if not running (plugin hook)
+  gc status | gc peers
+  gc share   [--pid P | --name N] [--with-history] <who...>   share a session ('alice', 'bob@github', '*')
+  gc unshare [--pid P | --name N]
+  gc send-file [--pid P | --name N] <peer> <path>   e.g. gc send-file alice:pr-123 plot.html
+  gc transcript <peer>             fetch a peer's transcript (needs --with-history on their side)
+  gc fork [--bg] [--cwd DIR] <peer>   fetch the transcript and continue it here as your own session
+  gc stop
+"""
+import glob, json, os, socket, subprocess, sys, time
+
+GC = os.path.expanduser("~/.gc")
+SESS = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")) + "/sessions"
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def cfg():
+    try:
+        return json.load(open(f"{GC}/config.json"))
+    except FileNotFoundError:
+        sys.exit("gc: not installed (~/.gc/config.json missing) — run install.sh <hub>")
+
+
+def ctrl(cmd, timeout=30):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(timeout)
+    s.connect(f"{GC}/bridge.sock")
+    s.sendall((json.dumps(cmd) + "\n").encode())
+    res = json.loads(s.makefile().readline())
+    if not res.get("ok"):
+        sys.exit(f"gc: {res.get('error')}")
+    return res
+
+
+def running():
+    try:
+        return ctrl({"cmd": "status"})
+    except (OSError, ValueError):
+        return None
+
+
+def spawn(args, log, cwd=None):
+    subprocess.Popen(args, stdout=open(log, "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                     start_new_session=True, cwd=cwd)
+
+
+def ensure_tailscale(c):
+    """our own userspace tailscaled (no root, no tun): survives VPN clients that filter other interfaces"""
+    ts = c.get("tailscale")
+    if not ts:
+        return
+    cli = [f"{ts}/tailscale", "--socket", f"{ts}/ts.sock"]
+    if subprocess.run(cli + ["status"], capture_output=True).returncode == 0:
+        return
+    spawn([f"{ts}/tailscaled", "--tun=userspace-networking", f"--socket={ts}/ts.sock", f"--statedir={ts}/state",
+           f"--socks5-server={c.get('socks', '127.0.0.1:1055')}", "--port=0"], f"{ts}/tailscaled.log")
+    for _ in range(20):
+        time.sleep(0.5)
+        if os.path.exists(f"{ts}/ts.sock"):
+            break
+    subprocess.run(cli + ["up", "--hostname", socket.gethostname().split(".")[0] + "-gc", "--timeout", "5s"],
+                   capture_output=True)  # no-op when logged in; install.sh handles the first login
+
+
+def flag(args, name, value=False):
+    """pop --name [value] from args"""
+    if name not in args:
+        return None if value else False
+    i = args.index(name)
+    v = args[i + 1] if value else True
+    del args[i:i + 2 if value else i + 1]
+    return v
+
+
+def session(args):
+    """resolve --pid / --name to a registry record; strips the flags from args"""
+    pid, name = flag(args, "--pid", True), flag(args, "--name", True)
+    if pid:
+        try:
+            return json.load(open(f"{SESS}/{pid}.json"))
+        except FileNotFoundError:
+            sys.exit(f"gc: pid {pid} is not a Claude Code session")
+    if name:
+        for f in glob.glob(f"{SESS}/*.json"):
+            r = json.load(open(f))
+            if r.get("name") == name:
+                return r
+        sys.exit(f"gc: no session named {name}")
+    sys.exit("gc: say which session: --pid $PPID (from inside the session) or --name <name>")
+
+
+def set_shared(sid, entry):
+    p = f"{GC}/shared.json"
+    try:
+        d = json.load(open(p))
+    except Exception:
+        d = {}
+    if entry is None:
+        d.pop(sid, None)
+    else:
+        d[sid] = entry
+    json.dump(d, open(p, "w"))
+
+
+def render(jsonl):
+    """readable markdown of a transcript: user/assistant text, tool calls as one-liners"""
+    out = []
+    for line in open(jsonl):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") not in ("user", "assistant"):
+            continue
+        content = e.get("message", {}).get("content", "")
+        if isinstance(content, str):
+            out.append(f"**{e['type']}:** {content.strip()}\n")
+            continue
+        for b in content:
+            if b.get("type") == "text" and b["text"].strip():
+                out.append(f"**{e['type']}:** {b['text'].strip()}\n")
+            elif b.get("type") == "tool_use":
+                out.append(f"_[{b['name']}]_ `{json.dumps(b.get('input', {}))[:200]}`\n")
+    md = jsonl[:-6] + ".md"
+    open(md, "w").write("\n".join(out))
+    return md
+
+
+def main(argv):
+    cmd, args = (argv[0] if argv else "help"), argv[1:]
+    if cmd == "ensure-tailscale":
+        ensure_tailscale(cfg())
+    elif cmd == "ensure-bridge":
+        c = cfg()
+        ensure_tailscale(c)
+        if not running():
+            spawn([sys.executable, f"{HERE}/gc-bridge.py"], f"{GC}/bridge.log")
+    elif cmd in ("status", "peers"):
+        st = running() or sys.exit("gc: bridge not running (gc ensure-bridge)")
+        if cmd == "peers":
+            print("\n".join(p + ("  (with history)" if p in st["history"] else "") for p in st["peers"]) or "(no shared sessions visible)")
+        else:
+            print(json.dumps(st, indent=1))
+    elif cmd == "share":
+        hist = flag(args, "--with-history")
+        r = session(args)
+        args or sys.exit("gc: share with whom? names, logins or '*'")
+        set_shared(r["sessionId"], {"acl": args, "history": hist})
+        print(f"{r['name']} shared with {', '.join(args)}" + (" (with history)" if hist else ""))
+    elif cmd == "unshare":
+        r = session(args)
+        set_shared(r["sessionId"], None)
+        print(f"{r['name']} is private again")
+    elif cmd == "send-file":
+        r = session(args)
+        len(args) == 2 or sys.exit("gc: send-file <peer> <path>")
+        ctrl({"cmd": "send-file", "to": args[0], "path": os.path.abspath(args[1]), "from": r["name"]})
+        print(f"sent {args[1]} to {args[0]}")
+    elif cmd == "transcript":
+        args or sys.exit("gc: transcript <peer>")
+        r = ctrl({"cmd": "transcript", "to": args[0]}, timeout=150)
+        print(f"{r['path']}\n{render(r['path'])}")
+    elif cmd == "fork":
+        bg, cwd = flag(args, "--bg"), flag(args, "--cwd", True) or os.getcwd()
+        args or sys.exit("gc: fork [--bg] [--cwd DIR] <peer>")
+        peer = args[0]
+        r = ctrl({"cmd": "transcript", "to": peer}, timeout=150)
+        name = peer.replace(":", "-") + "-fork"
+        note = (f"This session was forked from {peer}'s session (which ran in {r['cwd']}); you now run in {cwd} "
+                f"on {socket.gethostname()}. Continue from the context above; wait for instructions.")
+        if bg:
+            out = subprocess.run(["claude", "--bg", "--resume", r["path"], "--fork-session", "--name", name, note],
+                                 cwd=cwd, capture_output=True, text=True)
+            print(out.stdout.strip() or out.stderr.strip())
+            print(f"\nforked {peer} → background session '{name}' in {cwd}\nattach with:  claude attach {name}")
+        else:
+            os.chdir(cwd)
+            os.execvp("claude", ["claude", "--resume", r["path"], "--fork-session", "--name", name, note])
+    elif cmd == "stop":
+        try:
+            os.kill(int(open(f"{GC}/bridge.pid").read()), 15)
+        except (OSError, ValueError):
+            pass
+    else:
+        print(__doc__.strip())
+
+
+main(sys.argv[1:])

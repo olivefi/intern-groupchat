@@ -1,0 +1,21 @@
+---
+name: gc-share
+description: Share or unshare the current Claude Code session with coworkers over intern-groupchat, or explain who can see it. Use when the user says "share this session with alice", "let bob see this", "share with history", "make this session visible to the team", "unshare", "stop sharing", "who is this shared with", or asks what the "alice:pr-123" entries in /peers are.
+---
+
+Sessions are private until shared. Sharing makes this session appear in the other
+person's `/peers` as `<you>:<session name>`; they can then message it, and you see their
+messages here like any peer message. Remote sessions shared with you appear as
+`<user>:<name>`. Files sent to you land in `~/.gc/inbox/<user>/`.
+
+- Share: `"$HOME/.gc/bin/gc" share --pid $PPID <names...>` — names are first names of
+  tailscale logins (`alice`), full logins (`alice@github`), or `*` for everyone on the hub.
+- Share with history: add `--with-history` — then those people can also fetch this
+  session's full transcript (`gc transcript`) or fork it (`gc fork`). Use it when the user
+  says "with history", "including history", "so they can fork it", "give them the full context".
+- Unshare: `"$HOME/.gc/bin/gc" unshare --pid $PPID`
+- Status / who can see what: `"$HOME/.gc/bin/gc" status`
+
+Run the command with Bash (the `$PPID` must be evaluated by the Bash tool: it identifies
+this session). Report the one-line result. If it says the bridge isn't running, run
+`"$HOME/.gc/bin/gc" ensure-bridge` and retry once.
