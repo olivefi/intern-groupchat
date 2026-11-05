@@ -56,6 +56,7 @@ else
   fi
 fi
 
+cp "$dir/INSTALL_VERSION" ~/.gc/install_version
 ~/.gc/bin/gc ensure-bridge
 sleep 3
 ~/.gc/bin/gc status | head -5 || true

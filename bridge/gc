@@ -10,6 +10,7 @@
   gc transcript <peer>             fetch a peer's transcript (needs --with-history on their side)
   gc fork [--bg] [--cwd DIR] <peer>   fetch the transcript and continue it here as your own session
   gc web                           open the hub's web page (via the bridge, so it also works under a VPN)
+  gc update                        pull the version the hub runs and restart the bridge
   gc stop
 """
 import glob, json, os, socket, subprocess, sys, time
@@ -69,6 +70,38 @@ def ensure_tailscale(c):
             break
     subprocess.run(cli + ["up", "--hostname", socket.gethostname().split(".")[0] + "-gc", "--timeout", "5s"],
                    capture_output=True)  # no-op when logged in; install.sh handles the first login
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", HERE, *args], capture_output=True, text=True)
+
+
+def behind(st):
+    """the hub runs a commit this clone doesn't contain"""
+    c = st and st.get("hub_commit")
+    return c and git("merge-base", "--is-ancestor", c, "HEAD").returncode != 0 and c
+
+
+def reinstall_hint(c):
+    """the clone needs a newer install than this machine had (bump INSTALL_VERSION when install.sh/ps1 must rerun)"""
+    def ver(p, default):
+        try:
+            return int(open(p).read())
+        except (OSError, ValueError):
+            return default
+    if ver(f"{GC}/install_version", 1) >= ver(f"{HERE}/../INSTALL_VERSION", 1):
+        return None
+    repo = os.path.dirname(HERE)
+    if WIN:
+        return f'powershell -ExecutionPolicy Bypass -File "{repo}\\install.ps1" {c["hub"]}'
+    return f'{repo}/install.sh {c["hub"]}' + ("" if c.get("tailscale") else " --system-tailscale")
+
+
+def stop():
+    try:
+        os.kill(int(open(f"{GC}/bridge.pid").read()), 15)
+    except (OSError, ValueError):
+        pass
 
 
 def flag(args, name, value=False):
@@ -153,8 +186,14 @@ def main(argv):
     elif cmd == "ensure-bridge":
         c = cfg()
         ensure_tailscale(c)
-        if not running():
+        st = running()
+        if not st:
             spawn([sys.executable, f"{HERE}/gc-bridge.py"], f"{GC}/bridge.log")
+        elif new := behind(st):
+            print(f"intern-groupchat: the hub runs a newer version ({new[:8]}). "
+                  f"Tell the user and offer to run `~/.gc/bin/gc update`.")
+        if hint := reinstall_hint(c):
+            print(f"intern-groupchat: this update needs the installer rerun. Tell the user to run: {hint}")
     elif cmd in ("status", "peers"):
         st = running() or sys.exit("gc: bridge not running (gc ensure-bridge)")
         if cmd == "peers":
@@ -207,11 +246,20 @@ def main(argv):
         print(url)
         import webbrowser
         webbrowser.open(url)
+    elif cmd == "update":
+        r = git("pull", "--ff-only")
+        print(r.stdout.strip() or r.stderr.strip())
+        if r.returncode:
+            sys.exit("gc: update failed")
+        stop()
+        while running():
+            time.sleep(0.5)
+        main(["ensure-bridge"])
+        print("bridge restarted")
+        if hint := reinstall_hint(cfg()):
+            print(f"this update also needs the installer rerun:\n  {hint}")
     elif cmd == "stop":
-        try:
-            os.kill(int(open(f"{GC}/bridge.pid").read()), 15)
-        except (OSError, ValueError):
-            pass
+        stop()
     else:
         print(__doc__.strip())
 

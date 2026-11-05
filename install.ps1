@@ -14,6 +14,7 @@ $link = "$HOME\.claude\skills\gc"
 if (Test-Path $link) { (Get-Item $link).Delete() }
 New-Item -ItemType Junction -Path $link -Target "$dir\plugin" | Out-Null
 Set-Content "$gc\config.json" "{`"hub`": `"$Hub`"}" -Encoding ascii
+Copy-Item "$dir\INSTALL_VERSION" "$gc\install_version"
 & "$gc\bin\gc.cmd" ensure-bridge
 Start-Sleep 4
 & "$gc\bin\gc.cmd" status

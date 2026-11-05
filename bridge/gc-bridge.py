@@ -111,6 +111,7 @@ class Bridge:
         self.published = None
         self.http_port = 7778
         self.last_error = None
+        self.hub_commit = None
 
     # ---- hub link -------------------------------------------------------------------
     async def hub(self, obj):
@@ -151,6 +152,7 @@ class Bridge:
                     if m["t"] == "welcome":
                         self.user = m["user"]
                         self.http_port = m.get("http_port", 7778)
+                        self.hub_commit = m.get("commit")
                         self.last_error = None
                         print(f"connected to {CFG['hub']} as {self.user}", flush=True)
                     elif m["t"] == "peers":
@@ -348,7 +350,7 @@ class Bridge:
         try:
             m = json.loads(await r.readline())
             if m["cmd"] == "status":
-                res.update(user=self.user, connected=bool(self.w), hub=CFG["hub"], last_error=self.last_error, machine=MACHINE,
+                res.update(user=self.user, connected=bool(self.w), hub=CFG["hub"], last_error=self.last_error, machine=MACHINE, hub_commit=self.hub_commit,
                            peers=[display(a) for a in self.peers],
                            history=[display(a) for a, s in self.peers.items() if s.get("history")],
                            shared=load(SHARED, {}))

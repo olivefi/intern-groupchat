@@ -101,7 +101,10 @@ From a terminal, `gc fork alice:pr-123` opens the forked session right there; `-
 the skill uses) starts it in the background for `claude attach`.
 
 Bridge log: `~/.gc/bridge.log`; userspace tailscale state and log: `~/.gc/tailscale/`.
-Update: `git pull` in the clone (hub: `sudo systemctl restart gc-hub`).
+Update: `gc update` (hub: `git pull && sudo systemctl restart gc-hub`). The hub announces its commit and new
+sessions are told when their clone is behind it, so updating the hub is how you roll out a version.
+If a change needs `install.sh`/`install.ps1` rerun (new config keys, links, …), bump `INSTALL_VERSION`;
+sessions and `gc update` then show everyone the exact install command to rerun.
 To ssh into the hub machine through the userspace tailscale (e.g. under a VPN):
 `ssh -o ProxyCommand='nc -X 5 -x 127.0.0.1:1055 %h %p' <user>@gc-hub`.
 

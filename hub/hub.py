@@ -9,6 +9,8 @@ STORE = os.path.expanduser(os.environ.get("GC_STORE", "~/.gc-hub/store"))
 ALIASES = os.path.expanduser(os.environ.get("GC_ALIASES", "~/.gc-hub/aliases.json"))  # {"oliver": "olivefi@github"}
 DEV_TRUST_HELLO = os.environ.get("GC_DEV_TRUST_HELLO") == "1"  # local testing only: take the user from hello
 MAX_LINE = 96 * 1024 * 1024
+COMMIT = subprocess.run(["git", "-C", os.path.dirname(os.path.abspath(__file__)), "rev-parse", "HEAD"],
+                        capture_output=True, text=True).stdout.strip()
 
 
 def ts(*args):
@@ -158,7 +160,7 @@ async def handle(reader, writer):
             return
         c = Conn(user, hello.get("machine", "?"), writer)
         conns.add(c)
-        await c.send({"t": "welcome", "user": user, "host": HOST, "http_port": HTTP_PORT})
+        await c.send({"t": "welcome", "user": user, "host": HOST, "http_port": HTTP_PORT, "commit": COMMIT})
         print(f"+ {user}@{c.machine} ({ip})", flush=True)
         while line := await reader.readline():
             m = json.loads(line)

@@ -110,4 +110,4 @@ analyses or plots, ask it to send you results.
 - Logs: `~/.gc/bridge.log`, `~/.gc/tailscale/tailscaled.log`.
 - Peer not listed although the owner shared it: are you both online, did the owner spell
   your name as it appears in `gc status` (`user`)?
-- Update: `cd ~/.gc/intern-groupchat && git pull`, then `gc stop && gc ensure-bridge`.
+- Update: `~/.gc/bin/gc update` (pull + restart the bridge). New sessions tell you when the hub runs a newer version.
