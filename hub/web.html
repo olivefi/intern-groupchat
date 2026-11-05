@@ -76,7 +76,7 @@ function select(p) {
 }
 function drawLog() {
   if (!sel) return;
-  $('log').innerHTML = msgs.filter(m => m.from === 'hub' || same(m.from)).map(m =>
+  $('log').innerHTML = msgs.filter(m => m.from === 'hub' || (m.from === 'me' ? m.to === sel.addr : same(m.from))).map(m =>
     `<div class="msg ${m.from === 'me' ? 'me' : ''}"><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : disp(m.from)} · ${new Date(m.ts * 1000).toLocaleTimeString()}</small>${esc(m.text)}${m.url ? ` <a href="${new URL(m.url).pathname}" download>download</a>` : ''}</div>`
   ).join('');
   $('log').scrollTop = $('log').scrollHeight;
@@ -109,7 +109,7 @@ $('pick').onchange = async () => {
   const f = $('pick').files[0];
   if (!f || !sel) return;
   await fetch(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
-  msgs.push({ from: 'me', ts: Date.now() / 1000, text: `sent file ${f.name}` });
+  msgs.push({ from: 'me', to: sel.addr, ts: Date.now() / 1000, text: `sent file ${f.name}` });
   drawLog(); $('pick').value = '';
 };
 $('hist').onclick = async () => {
