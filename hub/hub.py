@@ -55,11 +55,15 @@ def in_acl(user, acl):
     return "*" in acl or user in acl or user.split("@")[0] in acl
 
 
+def own(c, user):
+    return c.user == user and c.machine != "web"  # your browser tab is not a peer, unless it has messaged you
+
+
 def visible(user):
     return [{"addr": addr(c, n), "user": c.user, "machine": c.machine, "name": n,
-             "history": s["history"] or c.user == user}
+             "history": s["history"] or own(c, user)}
             for c in conns for n, s in c.sessions.items()
-            if c.user == user or in_acl(user, s["acl"]) or (addr(c, n), user) in contacts]
+            if own(c, user) or in_acl(user, s["acl"]) or (addr(c, n), user) in contacts]
 
 
 async def push_peers():
