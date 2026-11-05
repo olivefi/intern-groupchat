@@ -12,7 +12,7 @@ bring their own userspace Tailscale (no root), so nothing to install there.
 ## Hub (once, on an always-on machine — e.g. the jetson)
 
 ```sh
-git clone <this repo> && cd intern-groupchat
+git clone git@github.com:olivefi/intern-groupchat.git && cd intern-groupchat
 GC_STORE=/mnt/ssd/gc-hub/store hub/install.sh     # system service, starts after tailscale at boot
 ```
 It prints the hub node name (e.g. `gc-hub.tail4e78b.ts.net`). In https://login.tailscale.com/admin/machines
@@ -23,7 +23,7 @@ Revoke = unshare.
 
 Accept the hub share link (any Tailscale account: GitHub/Google/…), then:
 ```sh
-git clone <this repo> ~/.gc/intern-groupchat
+git clone git@github.com:olivefi/intern-groupchat.git ~/.gc/intern-groupchat
 ~/.gc/intern-groupchat/install.sh gc-hub.<tailnet>.ts.net
 ```
 It prints one login link — open it, done. Nothing else changes. The client runs its own

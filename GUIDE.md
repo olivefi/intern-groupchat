@@ -11,7 +11,7 @@ conversations around. There is no new UI; you just talk to your own Claude.
    step brings its own.
 2. In a terminal:
    ```sh
-   git clone <repo url> ~/.gc/intern-groupchat
+   git clone git@github.com:olivefi/intern-groupchat.git ~/.gc/intern-groupchat
    ~/.gc/intern-groupchat/install.sh gc-hub.<tailnet>.ts.net      # address from the owner
    ```
    It prints a link; open it and log in with the same account as in step 1. That's it.
