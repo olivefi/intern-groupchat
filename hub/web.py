@@ -155,6 +155,14 @@ class Handler(hub.Files):
                 self.reply(504, {"error": "no answer from the session's machine"})
             elif r["t"] == "error":
                 self.reply(400, {"error": r["msg"]})
+            elif q.get("raw"):
+                body = base64.b64decode(r["data"])
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-ndjson")
+                self.send_header("Content-Disposition", f'attachment; filename="{q["to"].replace("/", "-")}.jsonl"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             else:
                 self.reply(200, {"cwd": r["cwd"], "items": render(base64.b64decode(r["data"]).decode(errors="replace"))})
         else:

@@ -119,7 +119,7 @@ $('hist').onclick = async () => {
   const r = await fetch('/api/transcript?to=' + encodeURIComponent(sel.addr));
   const d = await r.json();
   if (!r.ok) { t.innerHTML = `<p>${esc(d.error)}</p>`; return; }
-  t.innerHTML = `<p><b>${sel.disp}</b> in <code>${esc(d.cwd)}</code> · ${d.items.length} entries. To continue it on your machine: <code>gc fork ${sel.disp}</code>
+  t.innerHTML = `<p><b>${sel.disp}</b> in <code>${esc(d.cwd)}</code> · ${d.items.length} entries. <a href="/api/transcript?to=${encodeURIComponent(sel.addr)}&raw=1">download .jsonl</a>. To continue it on your machine: <code>gc fork ${sel.disp}</code>, or with the file: <code>claude --resume ${sel.disp.replace(':', '-')}.jsonl --fork-session</code>
     <button type="button" onclick="this.closest('#transcript').style.display='none';document.getElementById('log').style.display=''">back</button></p>` +
     d.items.map(i => i.role === 'tool' ? `<div class="tool">${esc(i.text)}</div>` : `<p class="${i.role}">${esc(i.text)}</p>`).join('');
 };
