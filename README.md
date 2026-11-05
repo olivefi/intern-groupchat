@@ -7,7 +7,8 @@ slope plot", "send alice the rosbag", "fork bob:analysis here". User guide: [GUI
 Design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Needs: python3 and Claude Code ≥ 2.1.224 on every machine, Tailscale on the hub. Clients
-bring their own userspace Tailscale (no root), so nothing to install there.
+run their own userspace Tailscale (no root): on Linux the installer downloads it, on macOS
+`brew install tailscale` first.
 
 ## Hub (once, on an always-on machine — e.g. the jetson)
 
@@ -15,7 +16,8 @@ bring their own userspace Tailscale (no root), so nothing to install there.
 git clone git@github.com:olivefi/intern-groupchat.git && cd intern-groupchat
 GC_STORE=/mnt/ssd/gc-hub/store hub/install.sh     # system service, starts after tailscale at boot
 ```
-It prints the hub node name (e.g. `gc-hub.tail4e78b.ts.net`). In https://login.tailscale.com/admin/machines
+It prints the hub node name (e.g. `gc-hub.tail4e78b.ts.net`). If `tailscale status` complains
+about iptables (the jetson does): `sudo tailscale set --netfilter-mode=off`. In https://login.tailscale.com/admin/machines
 disable key expiry on it. Give someone access: share that machine with them (⋯ → Share).
 Revoke = unshare.
 
