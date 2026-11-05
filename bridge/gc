@@ -8,6 +8,7 @@
   gc send-file [--pid P | --name N] <peer> <path>   e.g. gc send-file alice:pr-123 plot.html
   gc transcript <peer>             fetch a peer's transcript (needs --with-history on their side)
   gc fork [--bg] [--cwd DIR] <peer>   fetch the transcript and continue it here as your own session
+  gc web                           open the hub's web page (via the bridge, so it also works under a VPN)
   gc stop
 """
 import glob, json, os, socket, subprocess, sys, time
@@ -179,6 +180,12 @@ def main(argv):
         else:
             os.chdir(cwd)
             os.execvp("claude", ["claude", "--resume", r["path"], "--fork-session", "--name", name, note])
+    elif cmd == "web":
+        running() or sys.exit("gc: bridge not running (gc ensure-bridge)")
+        url = f"http://127.0.0.1:{cfg().get('web_port', 7779)}/"
+        print(url)
+        import webbrowser
+        webbrowser.open(url)
     elif cmd == "stop":
         try:
             os.kill(int(open(f"{GC}/bridge.pid").read()), 15)

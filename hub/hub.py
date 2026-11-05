@@ -81,6 +81,46 @@ def conn_of(user, machine):
     return next((c for c in conns if c.user == user and c.machine == machine), None)
 
 
+async def relay(c, m):
+    if m["t"] in ("send", "file"):
+        src = addr(c, m["from"])
+        target = find(m["to"])
+        if not target or not any(v["addr"] == m["to"] for v in visible(c.user)):
+            await c.send({"t": "error", "re": m["from"], "msg": f"{m['to']} is not online or not shared with you"})
+            return
+        tc, tname = target
+        if (src, tc.user) not in contacts:
+            contacts.add((src, tc.user))
+            await push_peers()
+        fwd = {"t": m["t"], "from": src, "to": tname}
+        if m["t"] == "send":
+            fwd["payload"] = m["payload"]
+        else:
+            fid = uuid.uuid4().hex[:12]
+            name = os.path.basename(m["name"])
+            os.makedirs(os.path.join(STORE, fid))
+            with open(os.path.join(STORE, fid, name), "wb") as f:
+                f.write(base64.b64decode(m["data"]))
+            fwd.update(name=name, data=m["data"], url=f"http://{HOST}:{HTTP_PORT}/{fid}/{name}")
+        await tc.send(fwd)
+    elif m["t"] == "transcript_req":
+        target = find(m["to"])
+        vis = next((v for v in visible(c.user) if v["addr"] == m["to"]), None)
+        if not target or not vis:
+            await c.send({"t": "error", "req": m["req"], "msg": f"{m['to']} is not online or not shared with you"})
+        elif not vis["history"]:
+            await c.send({"t": "error", "req": m["req"], "msg": f"{m['to']} is shared without history (owner: gc share --with-history)"})
+        else:
+            tc, tname = target
+            await tc.send({"t": "transcript_req", "to": tname, "req": m["req"], "reply_user": c.user, "reply_machine": c.machine})
+    elif m["t"] in ("transcript", "error") and m.get("reply_user"):
+        rc = conn_of(m["reply_user"], m["reply_machine"])
+        if rc:
+            out = {k: v for k, v in m.items() if k not in ("reply_user", "reply_machine")}
+            out["from"] = addr(c, m.get("name", ""))
+            await rc.send(out)
+
+
 async def handle(reader, writer):
     ip = writer.get_extra_info("peername")[0]
     c = None
@@ -100,43 +140,8 @@ async def handle(reader, writer):
             if m["t"] == "publish":
                 c.sessions = {s["name"]: {"acl": s.get("acl", []), "history": bool(s.get("history"))} for s in m["sessions"]}
                 await push_peers()
-            elif m["t"] in ("send", "file"):
-                src = addr(c, m["from"])
-                target = find(m["to"])
-                if not target or not any(v["addr"] == m["to"] for v in visible(c.user)):
-                    await c.send({"t": "error", "re": m["from"], "msg": f"{m['to']} is not online or not shared with you"})
-                    continue
-                tc, tname = target
-                if (src, tc.user) not in contacts:
-                    contacts.add((src, tc.user))
-                    await push_peers()
-                fwd = {"t": m["t"], "from": src, "to": tname}
-                if m["t"] == "send":
-                    fwd["payload"] = m["payload"]
-                else:
-                    fid = uuid.uuid4().hex[:12]
-                    name = os.path.basename(m["name"])
-                    os.makedirs(os.path.join(STORE, fid))
-                    with open(os.path.join(STORE, fid, name), "wb") as f:
-                        f.write(base64.b64decode(m["data"]))
-                    fwd.update(name=name, data=m["data"], url=f"http://{HOST}:{HTTP_PORT}/{fid}/{name}")
-                await tc.send(fwd)
-            elif m["t"] == "transcript_req":
-                target = find(m["to"])
-                vis = next((v for v in visible(c.user) if v["addr"] == m["to"]), None)
-                if not target or not vis:
-                    await c.send({"t": "error", "req": m["req"], "msg": f"{m['to']} is not online or not shared with you"})
-                elif not vis["history"]:
-                    await c.send({"t": "error", "req": m["req"], "msg": f"{m['to']} is shared without history (owner: gc share --with-history)"})
-                else:
-                    tc, tname = target
-                    await tc.send({"t": "transcript_req", "to": tname, "req": m["req"], "reply_user": c.user, "reply_machine": c.machine})
-            elif m["t"] in ("transcript", "error") and m.get("reply_user"):
-                rc = conn_of(m["reply_user"], m["reply_machine"])
-                if rc:
-                    out = {k: v for k, v in m.items() if k not in ("reply_user", "reply_machine")}
-                    out["from"] = addr(c, m.get("name", ""))
-                    await rc.send(out)
+            else:
+                await relay(c, m)
     except (json.JSONDecodeError, ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError):
         pass
     finally:
@@ -155,10 +160,17 @@ class Files(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+loop = None
+
+
 async def main():
+    global loop
+    loop = asyncio.get_running_loop()
+    import web  # the browser UI; it reaches back into this module via __main__
     os.makedirs(STORE, exist_ok=True)
-    httpd = http.server.ThreadingHTTPServer((BIND, HTTP_PORT), functools.partial(Files, directory=STORE))
+    httpd = http.server.ThreadingHTTPServer((BIND, HTTP_PORT), functools.partial(web.Handler, directory=STORE))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    asyncio.create_task(web.expire())
     server = await asyncio.start_server(handle, BIND, PORT, limit=MAX_LINE)
     print(f"gc-hub on {BIND}:{PORT}, files at http://{HOST}:{HTTP_PORT}/", flush=True)
     async with server:

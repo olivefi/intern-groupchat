@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>intern-groupchat</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --mute: #777; --line: #ddd; --me: #e8f0fe; --them: #f3f3f3; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #eee; --mute: #999; --line: #333; --me: #1e2a44; --them: #222; --accent: #60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+  header small { color: var(--mute); }
+  main { flex: 1; display: flex; min-height: 0; }
+  nav { width: 240px; border-right: 1px solid var(--line); overflow-y: auto; padding: 8px 0; }
+  nav div { padding: 8px 16px; cursor: pointer; }
+  nav div.sel { background: var(--me); }
+  nav small { color: var(--mute); display: block; }
+  nav .none { color: var(--mute); cursor: default; }
+  section { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; }
+  .msg { max-width: 75%; margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--them); white-space: pre-wrap; word-wrap: break-word; }
+  .msg.me { background: var(--me); margin-left: auto; }
+  .msg small { display: block; color: var(--mute); font-size: 12px; }
+  .msg a { color: var(--accent); }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  textarea { flex: 1; resize: none; height: 60px; font: inherit; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  button { font: inherit; padding: 0 14px; border: 1px solid var(--line); background: var(--them); color: var(--fg); border-radius: 6px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #transcript { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  #transcript .tool { color: var(--mute); font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+  #transcript .user { border-left: 3px solid var(--accent); padding-left: 10px; }
+  #transcript p { white-space: pre-wrap; }
+  code { background: var(--them); padding: 2px 6px; border-radius: 4px; }
+  @media (max-width: 700px) { nav { width: 120px; } .msg { max-width: 95%; } }
+</style>
+</head>
+<body>
+<header><b>intern-groupchat</b><small id="me">connecting…</small></header>
+<main>
+  <nav id="peers"><div class="none">no shared sessions online</div></nav>
+  <section>
+    <div id="log"></div>
+    <div id="transcript"></div>
+    <form id="f">
+      <textarea id="text" placeholder="pick a session on the left, then write to its agent" disabled></textarea>
+      <button type="submit" class="primary" disabled>Send</button>
+      <button type="button" id="file" disabled>File…</button>
+      <button type="button" id="hist" disabled hidden>History</button>
+    </form>
+  </section>
+</main>
+<input type="file" id="pick" hidden>
+<script>
+const $ = id => document.getElementById(id);
+let seq = 0, peers = [], sel = null, msgs = [];
+const disp = a => { const [u, n] = a.split('/'); return u.split('@')[0] + ':' + n; };
+const esc = s => s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+const same = a => a.includes(':') ? disp(a) === sel.disp : a === sel.addr;
+
+function drawPeers() {
+  $('peers').innerHTML = peers.map(p =>
+    `<div class="${sel && sel.addr === p.addr ? 'sel' : ''}" data-a="${p.addr}">${disp(p.addr)}<small>${p.machine}${p.history ? ' · history' : ''}</small></div>`
+  ).join('') || '<div class="none">no shared sessions online</div>';
+  for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = () => select(peers.find(p => p.addr === d.dataset.a));
+}
+function select(p) {
+  sel = { ...p, disp: disp(p.addr) };
+  for (const el of ['text', 'file']) $(el).disabled = false;
+  $('f').querySelector('[type=submit]').disabled = false;
+  $('hist').hidden = !p.history; $('hist').disabled = !p.history;
+  $('transcript').style.display = 'none'; $('log').style.display = '';
+  drawPeers(); drawLog();
+}
+function drawLog() {
+  if (!sel) return;
+  $('log').innerHTML = msgs.filter(m => m.from === 'hub' || same(m.from)).map(m =>
+    `<div class="msg ${m.from === 'me' ? 'me' : ''}"><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : disp(m.from)} · ${new Date(m.ts * 1000).toLocaleTimeString()}</small>${esc(m.text)}${m.url ? ` <a href="${new URL(m.url).pathname}" download>download</a>` : ''}</div>`
+  ).join('');
+  $('log').scrollTop = $('log').scrollHeight;
+}
+async function poll() {
+  try {
+    const r = await fetch('/api/state?after=' + seq);
+    if (r.status === 403) { $('me').textContent = 'not recognised: open this page from a device on the tailnet'; return; }
+    const s = await r.json();
+    $('me').textContent = s.user;
+    seq = s.seq; peers = s.peers;
+    msgs.push(...s.msgs);
+    drawPeers(); drawLog();
+  } catch (e) { await new Promise(r => setTimeout(r, 3000)); }
+  poll();
+}
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('text').value.trim();
+  if (!text || !sel) return;
+  $('text').value = '';
+  msgs.push({ from: 'me', to: sel.addr, ts: Date.now() / 1000, text });
+  drawLog();
+  await fetch('/api/send', { method: 'POST', body: JSON.stringify({ to: sel.addr, text }) });
+};
+$('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } };
+$('file').onclick = () => $('pick').click();
+$('pick').onchange = async () => {
+  const f = $('pick').files[0];
+  if (!f || !sel) return;
+  await fetch(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+  msgs.push({ from: 'me', ts: Date.now() / 1000, text: `sent file ${f.name}` });
+  drawLog(); $('pick').value = '';
+};
+$('hist').onclick = async () => {
+  const t = $('transcript');
+  t.style.display = ''; $('log').style.display = 'none';
+  t.innerHTML = '<p>fetching transcript…</p>';
+  const r = await fetch('/api/transcript?to=' + encodeURIComponent(sel.addr));
+  const d = await r.json();
+  if (!r.ok) { t.innerHTML = `<p>${esc(d.error)}</p>`; return; }
+  t.innerHTML = `<p><b>${sel.disp}</b> in <code>${esc(d.cwd)}</code> · ${d.items.length} entries. To continue it on your machine: <code>gc fork ${sel.disp}</code>
+    <button type="button" onclick="this.closest('#transcript').style.display='none';document.getElementById('log').style.display=''">back</button></p>` +
+    d.items.map(i => i.role === 'tool' ? `<div class="tool">${esc(i.text)}</div>` : `<p class="${i.role}">${esc(i.text)}</p>`).join('');
+};
+poll();
+</script>
+</body>
+</html>

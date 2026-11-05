@@ -82,6 +82,7 @@ class Bridge:
         self.peers = {}                               # addr -> info from hub
         self.pending = {}                             # req id -> future (transcript requests)
         self.published = None
+        self.http_port = 7778
 
     # ---- hub link -------------------------------------------------------------------
     async def hub(self, obj):
@@ -89,9 +90,9 @@ class Bridge:
             self.w.write((json.dumps(obj) + "\n").encode())
             await self.w.drain()
 
-    async def connect(self):
-        host, _, port = CFG["hub"].partition(":")
-        port = int(port or 7777)
+    async def connect(self, port=None):
+        host, _, p = CFG["hub"].partition(":")
+        port = port or int(p or 7777)
         socks = CFG.get("socks")  # "host:port" of the userspace tailscale's SOCKS5 proxy
         if not socks:
             return await asyncio.open_connection(host, port, limit=MAX_LINE)
@@ -121,6 +122,7 @@ class Bridge:
                     m = json.loads(line)
                     if m["t"] == "welcome":
                         self.user = m["user"]
+                        self.http_port = m.get("http_port", 7778)
                         print(f"connected to {CFG['hub']} as {self.user}", flush=True)
                     elif m["t"] == "peers":
                         await self.sync_peers(m["sessions"])
@@ -292,6 +294,23 @@ class Bridge:
             f.write(base64.b64decode(r["data"]))
         return {"path": path, "cwd": r["cwd"]}
 
+    # ---- localhost -> hub web page (for browsers that can't reach the tailnet, e.g. under a VPN)
+    async def on_web(self, r, w):
+        async def pipe(a, b):
+            try:
+                while chunk := await a.read(65536):
+                    b.write(chunk)
+                    await b.drain()
+            except Exception:
+                pass
+            b.close()
+        try:
+            hr, hw = await self.connect(self.http_port)
+        except Exception as e:
+            print("web:", e, flush=True)
+            return w.close()
+        await asyncio.gather(pipe(r, hw), pipe(hr, w))
+
     # ---- control socket for the gc CLI -----------------------------------------------------
     async def on_ctrl(self, r, w):
         res = {"ok": True}
@@ -325,6 +344,7 @@ async def main():
     if os.path.exists(CTRL):
         os.unlink(CTRL)
     ctrl = await asyncio.start_unix_server(b.on_ctrl, CTRL)
+    await asyncio.start_server(b.on_web, "127.0.0.1", CFG.get("web_port", 7779))
     stop = asyncio.Event()
     for s in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(s, stop.set)
