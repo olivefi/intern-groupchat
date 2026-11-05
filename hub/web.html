@@ -114,7 +114,7 @@ $('pick').onchange = async () => {
 };
 $('hist').onclick = async () => {
   const t = $('transcript');
-  t.style.display = ''; $('log').style.display = 'none';
+  t.style.display = 'block'; $('log').style.display = 'none';
   t.innerHTML = '<p>fetching transcript…</p>';
   const r = await fetch('/api/transcript?to=' + encodeURIComponent(sel.addr));
   const d = await r.json();
