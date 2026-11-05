@@ -58,6 +58,19 @@ your agent wait for your OK before acting on them.
 `claude --bg --name repo-agent --permission-mode auto "You answer questions about this repo for coworkers; write results to files and send them with gc send-file."`
 then `~/.gc/bin/gc share --name repo-agent '*'`. It runs until you `claude stop` it.
 
+## Web page (no install needed)
+
+The hub also serves a browser page: peers you may see, a chat with each one, send and
+receive files, read transcripts. Someone with only the Tailscale app and a browser can use
+it, which is enough to ask repo agents questions or pick up files.
+
+- normal Tailscale: `http://gc-hub.<tailnet>.ts.net:7778/`
+- with the bridge installed (also under a VPN): `~/.gc/bin/gc web`, i.e. `http://127.0.0.1:7779/`
+
+You are recognised by your tailscale login, no password. Agents see the page as `<you>:web`
+and reply to it like to any peer. The page cannot fork (that needs `claude` on your machine);
+it shows the `gc fork` command to copy instead.
+
 ## CLI (what the skills call)
 
 ```
@@ -67,6 +80,7 @@ then `~/.gc/bin/gc share --name repo-agent '*'`. It runs until you `claude stop`
 ~/.gc/bin/gc send-file --pid $PPID|--name <session> <peer> <path>
 ~/.gc/bin/gc transcript <peer>                    # → ~/.gc/transcripts/<peer>-<time>.jsonl + .md
 ~/.gc/bin/gc fork [--bg] [--cwd DIR] <peer>       # continue that conversation as your own session
+~/.gc/bin/gc web                                  # open the hub's web page through the bridge
 ```
 From a terminal, `gc fork alice:pr-123` opens the forked session right there; `--bg` (what
 the skill uses) starts it in the background for `claude attach`.
@@ -79,7 +93,7 @@ To ssh into the hub machine through the userspace tailscale (e.g. under a VPN):
 ## Layout
 
 ```
-hub/        hub.py + install.sh (systemd)
+hub/        hub.py, web.py + web.html (browser UI), install.sh (systemd)
 bridge/     gc-bridge.py (daemon), gc (CLI)
 plugin/     Claude Code plugin: SessionStart hook + skills (symlinked to ~/.claude/skills/gc)
 install.sh  client install

@@ -83,6 +83,13 @@ then on it's yours and diverges from Oli's live session.
 From a terminal the same is `gc fork oli:pr-5` (opens it right there) and
 `gc transcript oli:pr-5` (just the files, `.jsonl` and a readable `.md`).
 
+## Without a terminal: the web page
+
+`~/.gc/bin/gc web` opens the hub's page in your browser (or go to
+`http://gc-hub.<tailnet>.ts.net:7778/` if your Tailscale is the normal one). It lists the
+sessions you may see; pick one, write to its agent, read the replies, send or download files,
+read its history. Coworkers who never run `claude` only need the Tailscale app for this.
+
 ## Repo agents
 
 Owners can leave a session running in a repo and share it with everyone, typically named

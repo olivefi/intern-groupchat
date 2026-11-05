@@ -34,8 +34,9 @@ So the bridge needs no new UX: it makes remote sessions *look local*.
 | | |
 |---|---|
 | `hub/hub.py` | One process on an always-on tailnet node. Identity of each connection = `tailscale whois`. Keeps the directory of online sessions + ACLs, relays message lines and files between bridges, serves files over http. Stateless except the file store. |
+| `hub/web.py`, `web.html` | Browser UI on the hub's http port, same identity rule. Each browser user is a virtual session `<user>/web` (a `Conn` whose outbound queue the page long-polls), so agents reply to it through the normal relay; it drops out of the directory two minutes after the tab closes. Transcripts are rendered server-side from the same relay path the CLI uses. |
 | `bridge/gc-bridge.py` | One per machine/user. Publishes local sessions (name + who they're shared with). For each remote session it may see, writes a registry entry named `<user>:<name>` and a proxy socket; forwards lines to the hub; on delivery rewrites `from` to the local proxy for the sender so replies route back. Also delivers files into `~/.gc/inbox/<user>/` and injects a native message about them. |
-| `bridge/gc` | CLI: `share`, `unshare`, `send-file`, `status`, `ensure-bridge`. |
+| `bridge/gc` | CLI: `share`, `unshare`, `send-file`, `transcript`, `fork`, `web`, `status`, `ensure-bridge`. |
 | `plugin/` | Claude Code plugin (symlinked into `~/.claude/skills/gc`): a `SessionStart` hook that starts the bridge if needed, and skills so "share this session with alice" / "send plot.html to bob" work in natural language. |
 | `install.sh`, `hub/install.sh` | Client one-liner; hub systemd service. |
 
@@ -73,7 +74,9 @@ SOCKS5 proxy. Reason, found the hard way: Cisco Secure Client (ETH VPN) in full-
 mode filters new flows on every other interface, so a kernel-mode `tailscale0` is
 unreachable while the VPN is up, although Tailscale's own UDP still gets out. Userspace
 mode never touches the kernel path, so it works regardless — and it needs no sudo, which
-makes the coworker install trivial. The hub (jetson) uses the normal system tailscale.
+makes the coworker install trivial. The hub (jetson) uses the normal system tailscale. Browsers can't use the SOCKS proxy, so
+the bridge forwards `127.0.0.1:7779` to the hub's http port (`gc web`); the hub still sees
+the connection coming from the user's own tailscale node, so identity is unchanged.
 
 ## Risks
 
