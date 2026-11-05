@@ -3,9 +3,9 @@
 
   gc ensure-bridge                 start tailscale (userspace) and the bridge if not running (plugin hook)
   gc status | gc peers
-  gc share   [--pid P | --name N] [--with-history] <who...>   share a session ('alice', 'bob@github', '*')
-  gc unshare [--pid P | --name N]
-  gc send-file [--pid P | --name N] <peer> <path>   e.g. gc send-file alice:pr-123 plot.html
+  gc share   [--name N] [--with-history] <who...>   share a session ('alice', 'bob@github', '*')
+  gc unshare [--name N]                              (default session: the one this runs inside of)
+  gc send-file [--name N] <peer> <path>              e.g. gc send-file alice:pr-123 plot.html
   gc transcript <peer>             fetch a peer's transcript (needs --with-history on their side)
   gc fork [--bg] [--cwd DIR] <peer>   fetch the transcript and continue it here as your own session
   gc web                           open the hub's web page (via the bridge, so it also works under a VPN)
@@ -13,6 +13,7 @@
 """
 import glob, json, os, socket, subprocess, sys, time
 
+WIN = os.name == "nt"
 GC = os.path.expanduser("~/.gc")
 SESS = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")) + "/sessions"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -26,9 +27,12 @@ def cfg():
 
 
 def ctrl(cmd, timeout=30):
-    s = socket.socket(socket.AF_UNIX)
-    s.settimeout(timeout)
-    s.connect(f"{GC}/bridge.sock")
+    if WIN:
+        s = socket.create_connection(("127.0.0.1", 7780), timeout=timeout)
+    else:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(timeout)
+        s.connect(f"{GC}/bridge.sock")
     s.sendall((json.dumps(cmd) + "\n").encode())
     res = json.loads(s.makefile().readline())
     if not res.get("ok"):
@@ -44,8 +48,8 @@ def running():
 
 
 def spawn(args, log, cwd=None):
-    subprocess.Popen(args, stdout=open(log, "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                     start_new_session=True, cwd=cwd)
+    detach = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if WIN else {"start_new_session": True}
+    subprocess.Popen(args, stdout=open(log, "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, cwd=cwd, **detach)
 
 
 def ensure_tailscale(c):
@@ -77,8 +81,10 @@ def flag(args, name, value=False):
 
 
 def session(args):
-    """resolve --pid / --name to a registry record; strips the flags from args"""
+    """resolve --pid / --name (default: the session this runs in, via CLAUDE_PID) to a registry record"""
     pid, name = flag(args, "--pid", True), flag(args, "--name", True)
+    if not pid and not name:
+        pid = os.environ.get("CLAUDE_PID")
     if pid:
         try:
             return json.load(open(f"{SESS}/{pid}.json"))
@@ -90,7 +96,7 @@ def session(args):
             if r.get("name") == name:
                 return r
         sys.exit(f"gc: no session named {name}")
-    sys.exit("gc: say which session: --pid $PPID (from inside the session) or --name <name>")
+    sys.exit("gc: say which session: --name <name> (or run this from inside a claude session)")
 
 
 def set_shared(sid, entry):
@@ -179,7 +185,8 @@ def main(argv):
             print(f"\nforked {peer} → background session '{name}' in {cwd}\nattach with:  claude attach {name}")
         else:
             os.chdir(cwd)
-            os.execvp("claude", ["claude", "--resume", r["path"], "--fork-session", "--name", name, note])
+            cmd = ["claude", "--resume", r["path"], "--fork-session", "--name", name, note]
+            sys.exit(subprocess.call(cmd)) if WIN else os.execvp("claude", cmd)
     elif cmd == "web":
         running() or sys.exit("gc: bridge not running (gc ensure-bridge)")
         url = f"http://127.0.0.1:{cfg().get('web_port', 7779)}/"

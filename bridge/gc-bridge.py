@@ -8,7 +8,9 @@ own /peers and SendMessage work unchanged. Messages are forwarded line by line; 
 `from` address is rewritten so replies route back through the proxy. It also delivers files
 and, for sessions shared with history, transcripts."""
 import asyncio, base64, glob, hashlib, json, os, re, secrets, signal, socket, time, uuid
+from urllib.parse import unquote
 
+WIN = os.name == "nt"  # Claude Code uses named pipes instead of unix sockets there
 GC = os.path.expanduser("~/.gc")
 CFG = json.load(open(f"{GC}/config.json"))
 CLAUDE = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude"))
@@ -16,7 +18,7 @@ SESS = f"{CLAUDE}/sessions"
 INBOX = f"{GC}/inbox"
 STATE = f"{GC}/state.json"    # {"fake": {addr: {"pid":.., "sock":..}}}
 SHARED = f"{GC}/shared.json"  # {sessionId: [acl] | {"acl": [...], "history": bool}}
-CTRL = f"{GC}/bridge.sock"
+CTRL = ("127.0.0.1", 7780) if WIN else f"{GC}/bridge.sock"
 MACHINE = socket.gethostname()
 FAKE_BASE = 4_000_000
 MAX_LINE = 96 * 1024 * 1024
@@ -57,15 +59,39 @@ def local_sessions():
     return out
 
 
+def same_path(a, b):
+    return a.lower() == b.lower() if WIN else a == b
+
+
+async def serve_local(path, cb):
+    if not WIN:
+        return await asyncio.start_unix_server(cb, path)
+    loop = asyncio.get_running_loop()
+    servers = await loop.start_serving_pipe(lambda: asyncio.StreamReaderProtocol(asyncio.StreamReader(limit=MAX_LINE), cb), path)
+    return servers[0]
+
+
+async def connect_local(path):
+    if not WIN:
+        return await asyncio.open_unix_connection(path)
+    loop = asyncio.get_running_loop()
+    r = asyncio.StreamReader(limit=MAX_LINE)
+    p = asyncio.StreamReaderProtocol(r)
+    t, _ = await loop.create_pipe_connection(lambda: p, path)
+    return r, asyncio.StreamWriter(t, p, r, loop)
+
+
 def transcript_path(rec):
     return f"{CLAUDE}/projects/{re.sub(r'[^A-Za-z0-9]', '-', rec['cwd'])}/{rec['sessionId']}.jsonl"
 
 
-def sockdir():
+def proxy_path(addr, pid):
+    if WIN:  # peers must be named cc-msg-<32 hex> to be accepted
+        return "\\\\.\\pipe\\cc-msg-" + hashlib.md5(addr.encode()).hexdigest()
     for r in local_sessions().values():
-        return os.path.dirname(r["messagingSocketPath"])
+        return f"{os.path.dirname(r['messagingSocketPath'])}/{pid}.sock"
     d = f"/run/user/{os.getuid()}/cc-socks"
-    return d if os.path.isdir(os.path.dirname(d)) else f"/tmp/cc-socks-{os.getuid()}"
+    return f"{d if os.path.isdir(os.path.dirname(d)) else f'/tmp/cc-socks-{os.getuid()}'}/{pid}.sock"
 
 
 def message(from_sock, from_name, text):
@@ -179,12 +205,12 @@ class Bridge:
         info = self.fake.get(addr)
         if not info:
             pid = FAKE_BASE + 1 + max([v["pid"] - FAKE_BASE for v in self.fake.values()] + [0])
-            info = self.fake[addr] = {"pid": pid, "sock": f"{sockdir()}/{pid}.sock"}
+            info = self.fake[addr] = {"pid": pid, "sock": proxy_path(addr, pid)}
             save(STATE, {"fake": self.fake})
         pid, sock = info["pid"], info["sock"]
-        if os.path.exists(sock):
+        if not WIN and os.path.exists(sock):
             os.unlink(sock)
-        self.servers[addr] = await asyncio.start_unix_server(lambda r, w: self.on_proxy(addr, r, w), sock)
+        self.servers[addr] = await serve_local(sock, lambda r, w: self.on_proxy(addr, r, w))
         version = next((r["version"] for r in local_sessions().values() if r.get("version")), "2.1.318")
         now = int(time.time() * 1000)
         # minimal record in the shape of a real one; the listing keys on messagingSocketPath
@@ -205,7 +231,7 @@ class Bridge:
             srv.close()
         info = self.fake.get(addr)
         if info:
-            for f in glob.glob(f"{SESS}/{info['pid']}.*") + [info["sock"]]:
+            for f in glob.glob(f"{SESS}/{info['pid']}.*") + ([] if WIN else [info["sock"]]):
                 try:
                     os.unlink(f)
                 except FileNotFoundError:
@@ -221,8 +247,8 @@ class Bridge:
         try:
             while line := await r.readline():
                 m = json.loads(line)
-                src = m.get("from", "")[4:]
-                name = next((n for n, s in local_sessions().items() if s["messagingSocketPath"] == src), None)
+                src = unquote(m.get("from", "")[4:])
+                name = next((n for n, s in local_sessions().items() if same_path(s["messagingSocketPath"], src)), None)
                 if name:
                     await self.hub({"t": "send", "to": addr, "from": name, "payload": line.decode()})
         except Exception as e:
@@ -257,10 +283,10 @@ class Bridge:
     async def notify(self, session_name, text):
         local = local_sessions().get(session_name or "")
         if local:
-            await self.write_sock(local["messagingSocketPath"], message(CTRL, "gc-bridge", text))
+            await self.write_sock(local["messagingSocketPath"], message("gc-bridge", "gc-bridge", text))
 
     async def write_sock(self, path, line):
-        r, w = await asyncio.open_unix_connection(path)
+        r, w = await connect_local(path)
         w.write(line.encode() + b"\n")
         await w.drain()
         w.close()
@@ -345,13 +371,17 @@ async def main():
         f.write(str(os.getpid()))
     b = Bridge()
     b.purge()
-    if os.path.exists(CTRL):
-        os.unlink(CTRL)
-    ctrl = await asyncio.start_unix_server(b.on_ctrl, CTRL)
+    if WIN:
+        ctrl = await asyncio.start_server(b.on_ctrl, *CTRL)
+    else:
+        if os.path.exists(CTRL):
+            os.unlink(CTRL)
+        ctrl = await asyncio.start_unix_server(b.on_ctrl, CTRL)
     await asyncio.start_server(b.on_web, "127.0.0.1", CFG.get("web_port", 7779))
     stop = asyncio.Event()
-    for s in (signal.SIGTERM, signal.SIGINT):
-        asyncio.get_running_loop().add_signal_handler(s, stop.set)
+    if not WIN:
+        for s in (signal.SIGTERM, signal.SIGINT):
+            asyncio.get_running_loop().add_signal_handler(s, stop.set)
     tasks = [asyncio.create_task(b.run_hub()), asyncio.create_task(b.run_publish())]
     await stop.wait()
     for t in tasks:

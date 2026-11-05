@@ -8,8 +8,7 @@ Design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Needs: python3 and Claude Code ≥ 2.1.224 on every machine, Tailscale on the hub. Clients
 run their own userspace Tailscale (no root): on Linux the installer downloads it, on macOS
-`brew install tailscale` first. Windows: use Claude Code inside WSL and install there (the
-bridge needs Unix sockets); the web page works from the Windows browser with the Tailscale app.
+`brew install tailscale` first. Windows: see below.
 
 ## Hub (once, on an always-on machine — e.g. the jetson)
 
@@ -33,6 +32,17 @@ It prints one login link — open it, done. Nothing else changes. The client run
 Tailscale in userspace mode as you (no sudo, no tun device), which also works under VPN
 clients like Cisco Secure Client that block traffic on other interfaces. If you already
 have a system Tailscale logged in and no such VPN, `--system-tailscale` uses it instead.
+
+### Windows (native Claude Code)
+
+With the Tailscale app installed and logged in (the hub shared with that account), in PowerShell:
+```powershell
+git clone https://github.com/olivefi/intern-groupchat.git $HOME\.gc\intern-groupchat
+powershell -ExecutionPolicy Bypass -File $HOME\.gc\intern-groupchat\install.ps1 gc-hub.<tailnet>.ts.net
+```
+Needs `python` and `claude` on PATH. The bridge talks to the hub through the Tailscale app
+(no userspace tailscale, so no VPN workaround on Windows) and uses named pipes where Linux
+uses sockets. `gc` is `%USERPROFILE%\.gc\bin\gc.cmd`. WSL users run `install.sh` inside WSL instead.
 
 ## Using it
 
@@ -80,9 +90,9 @@ it shows the `gc fork` command to copy instead.
 
 ```
 ~/.gc/bin/gc status | peers
-~/.gc/bin/gc share   --pid $PPID|--name <session> [--with-history] <names...|*>
-~/.gc/bin/gc unshare --pid $PPID|--name <session>
-~/.gc/bin/gc send-file --pid $PPID|--name <session> <peer> <path>
+~/.gc/bin/gc share   [--name <session>] [--with-history] <names...|*>   # default: the session it runs inside
+~/.gc/bin/gc unshare [--name <session>]
+~/.gc/bin/gc send-file [--name <session>] <peer> <path>
 ~/.gc/bin/gc transcript <peer>                    # → ~/.gc/transcripts/<peer>-<time>.jsonl + .md
 ~/.gc/bin/gc fork [--bg] [--cwd DIR] <peer>       # continue that conversation as your own session
 ~/.gc/bin/gc web                                  # open the hub's web page through the bridge

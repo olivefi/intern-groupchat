@@ -43,7 +43,7 @@ So the bridge needs no new UX: it makes remote sessions *look local*.
 ## Semantics
 
 * **Private by default.** All local sessions are published to the hub by name, but only
-  shared ones are visible to others. Sharing is per session: `gc share --pid $PPID alice`
+  shared ones are visible to others. Sharing is per session: `gc share alice` run inside it (the Bash tool's `CLAUDE_PID` names the session)
   (the skill does this), ACL = first names, full logins, or `*`.
 * **Contact rule.** If A messages B, A's session becomes visible to B's user (so B can
   reply) even if A never shared it.
@@ -77,6 +77,15 @@ mode never touches the kernel path, so it works regardless — and it needs no s
 makes the coworker install trivial. The hub (jetson) uses the normal system tailscale. Browsers can't use the SOCKS proxy, so
 the bridge forwards `127.0.0.1:7779` to the hub's http port (`gc web`); the hub still sees
 the connection coming from the user's own tailscale node, so identity is unchanged.
+
+## Windows
+
+Claude Code on Windows uses the same registry and protocol with named pipes
+(`\\.\pipe\cc-msg-<32 hex>`; peers must match that pattern, the key file hashes the pipe
+path). The bridge serves and dials pipes through asyncio's proactor loop, takes control
+commands on `127.0.0.1:7780` instead of a unix socket, and dials the hub directly through
+the Tailscale app. `install.ps1` writes `gc.cmd` plus a sh wrapper for Git Bash (which runs
+claude's hooks and Bash tool) and a junction for the plugin.
 
 ## Risks
 
