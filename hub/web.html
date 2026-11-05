@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>intern-groupchat</title>
 <style>
-  :root { --bg: #fff; --fg: #1a1a1a; --mute: #777; --line: #ddd; --me: #e8f0fe; --them: #f3f3f3; --accent: #2563eb; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #151515; --fg: #eee; --mute: #999; --line: #333; --me: #1e2a44; --them: #222; --accent: #60a5fa; }
-  }
+  :root { --bg: #151515; --fg: #eee; --mute: #999; --line: #333; --me: #1e2a44; --them: #222; --accent: #60a5fa; color-scheme: dark; }
+  :root[data-theme=light] { --bg: #fff; --fg: #1a1a1a; --mute: #777; --line: #ddd; --me: #e8f0fe; --them: #f3f3f3; --accent: #2563eb; color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); height: 100vh; display: flex; flex-direction: column; }
   header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   header small { color: var(--mute); }
   main { flex: 1; display: flex; min-height: 0; }
   aside { width: 260px; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
-  #q { margin: 8px; padding: 6px 8px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  .tools { display: flex; gap: 6px; margin: 8px; }
+  .tools button { padding: 0 8px; font-size: 13px; white-space: nowrap; }
+  #q { flex: 1; min-width: 0; padding: 6px 8px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
   nav { flex: 1; overflow-y: auto; }
   nav div { padding: 8px 16px; cursor: pointer; }
   nav div.sel { background: var(--me); }
@@ -25,6 +25,10 @@
   nav .grp { padding: 10px 12px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); user-select: none; }
   nav .mv { float: right; padding: 0 6px; margin-left: 4px; font-size: 12px; opacity: 0; }
   nav div:hover > .mv { opacity: 1; }
+  nav .over { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  nav .hint { font-size: 13px; padding: 4px 16px 8px; }
+  .chip { display: inline-block; background: var(--them); border-radius: 6px; padding: 2px 8px; margin: 6px 6px 0 0; color: var(--fg); }
+  .chip button { padding: 0 4px; margin-left: 4px; border: 0; background: none; color: var(--mute); }
   .badge { float: right; background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 12px; line-height: 18px; margin-top: 2px; }
   section { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   section.drop::after { content: "drop files to send"; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 85%, transparent); font-size: 18px; }
@@ -38,12 +42,14 @@
   .msg:hover > .copy, pre:hover > .copy { opacity: 1; }
   pre { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
   pre code { background: none; padding: 0; }
+  .msg img { display: block; max-width: 100%; max-height: 360px; margin-top: 6px; border-radius: 6px; cursor: zoom-in; }
+  .msg video { display: block; max-width: 100%; max-height: 360px; margin-top: 6px; }
   .wait { color: var(--mute); font-style: italic; margin: 6px 0; }
   #status { color: var(--mute); font-size: 13px; padding: 0 16px; }
   form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
   textarea { flex: 1; resize: none; height: 60px; font: inherit; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
   button { font: inherit; padding: 0 14px; border: 1px solid var(--line); background: var(--them); color: var(--fg); border-radius: 6px; cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
   #transcript { flex: 1; overflow-y: auto; padding: 0 16px 16px; display: none; }
   #transcript .bar { position: sticky; top: 0; background: var(--bg); padding: 12px 0 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   #transcript .bar button { padding: 2px 10px; }
@@ -57,12 +63,13 @@
   kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--mute); }
   @media (max-width: 700px) { aside { width: 130px; } .msg { max-width: 95%; } }
 </style>
+<script>try { document.documentElement.dataset.theme = localStorage['gc-theme'] || 'dark'; } catch (e) {}</script>
 </head>
 <body>
-<header><b>intern-groupchat</b><span><button id="notif" hidden>enable notifications</button> <small id="me">connecting…</small></span></header>
+<header><b>intern-groupchat</b><span><button id="notif" hidden>enable notifications</button> <button id="theme" title="switch light/dark"></button> <small id="me">connecting…</small></span></header>
 <main>
   <aside>
-    <input id="q" placeholder="filter  (Ctrl+K)" autocomplete="off">
+    <div class="tools"><input id="q" placeholder="filter  (Ctrl+K)" autocomplete="off"><button id="newf" title="new folder">+ folder</button></div>
     <nav id="peers"><div class="none">no shared sessions online</div></nav>
   </aside>
   <section id="main">
@@ -83,11 +90,22 @@ const $ = id => document.getElementById(id);
 let seq = 0, peers = [], sel = null, msgs = [], first = true, transcript = null, me = '';
 const disp = a => { const [u, n] = a.split('/'); return u.split('@')[0] + ':' + n; };
 const esc = s => s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const post = (url, body) => fetch(url, { method: 'POST', body, headers: { 'X-GC': '1' } });
+function attachment(m) {
+  if (Date.now() / 1000 - m.ts > ttl * 86400) return ' <i>(file expired on the hub)</i>';
+  const path = new URL(m.url).pathname, ext = path.split('.').pop().toLowerCase();
+  const links = ` <a href="${path}" target="_blank">open</a> · <a href="${path}" download>download</a>`;
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return links + `<a href="${path}" target="_blank"><img src="${path}" loading="lazy"></a>`;
+  if (['mp4', 'webm', 'mov'].includes(ext)) return links + `<video src="${path}" controls preload="metadata"></video>`;
+  return links;
+}
 const conv = m => m.from === 'me' || m.from === 'hub' ? m.to : m.from;  // which chat a message belongs to
 const store = (k, v) => { try { v === undefined ? (v = JSON.parse(localStorage[k])) : (localStorage[k] = JSON.stringify(v)); } catch (e) {} return v; };
 const read = store('gc-read') || {};  // addr -> last seen seq
 const folders = store('gc-folders') || {};  // addr -> folder name chosen by the user
 const collapsed = store('gc-collapsed') || {};  // group name -> true
+const folderList = store('gc-folderlist') || [];  // folders created with "+ folder", kept even when empty
+let dragging = false, pending = [], ttl = 7;
 const owner = a => a.split('/')[0];
 const group = p => folders[p.addr] || (owner(p.addr) === me ? 'mine' : owner(p.addr).split('@')[0]);
 let wanted = decodeURIComponent(location.hash.slice(1));
@@ -124,22 +142,25 @@ function known() {  // online peers, plus anyone we have a chat with (shown as o
   return all;
 }
 function drawPeers() {
+  if (dragging) return;  // redrawing would cancel the drag
   const q = $('q').value.toLowerCase();
   const groups = {};
   for (const p of known().filter(p => (disp(p.addr) + ' ' + (p.cwd || '') + ' ' + group(p)).toLowerCase().includes(q)))
     (groups[group(p)] ||= []).push(p);
-  const custom = new Set(Object.values(folders));  // user folders first, then owners
+  const custom = new Set([...folderList, ...Object.values(folders)]);  // user folders first, then owners
+  if (!q) for (const f of custom) groups[f] ||= [];
   const names = Object.keys(groups).sort((a, b) => custom.has(b) - custom.has(a) || a.localeCompare(b));
   $('peers').innerHTML = names.map(g => {
     const shut = collapsed[g] && !q, n = groups[g].reduce((s, p) => s + unread(p.addr), 0);
-    return `<div class="grp" data-g="${esc(g)}">${shut ? '▸' : '▾'} ${esc(g)}${shut && n ? `<span class="badge">${n}</span>` : ''}</div>` +
-      (shut ? '' : groups[g].sort((a, b) => b.online - a.online).map(p => {
+    return `<div class="grp" data-g="${esc(g)}" data-drop="${esc(g)}">${custom.has(g) ? '<button class="mv" title="rename or delete folder">⋯</button>' : ''}${shut ? '▸' : '▾'} ${esc(g)}${shut && n ? `<span class="badge">${n}</span>` : ''}</div>` +
+      (shut ? '' : !groups[g].length ? `<div class="none hint" data-drop="${esc(g)}">drag chats here</div>` : groups[g].sort((a, b) => b.online - a.online).map(p => {
         const n = unread(p.addr);
         const info = p.online ? [p.machine, p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
-        return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" title="${esc(info)}"><button class="mv" title="move to a folder">⋯</button>${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
+        return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" data-drop="${esc(g)}" draggable="true" title="${esc(info)}"><button class="mv" title="move to a folder">⋯</button>${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
       }).join(''));
   }).join('') || `<div class="none">${q ? 'no match' : 'no shared sessions online'}</div>`;
-  for (const d of $('peers').querySelectorAll('[data-g]')) d.onclick = () => {
+  for (const d of $('peers').querySelectorAll('[data-g]')) d.onclick = e => {
+    if (e.target.classList.contains('mv')) return editFolder(d.dataset.g);
     collapsed[d.dataset.g] ? delete collapsed[d.dataset.g] : collapsed[d.dataset.g] = true;
     store('gc-collapsed', collapsed); drawPeers();
   };
@@ -147,14 +168,43 @@ function drawPeers() {
     const a = d.dataset.a;
     if (!e.target.classList.contains('mv')) return select(known().find(p => p.addr === a));
     const f = prompt(`Folder for ${disp(a)} (empty: back under ${owner(a) === me ? 'mine' : owner(a).split('@')[0]})`, folders[a] || '');
-    if (f === null) return;
-    f.trim() ? folders[a] = f.trim() : delete folders[a];
-    store('gc-folders', folders); drawPeers();
+    if (f !== null) setFolder(a, f.trim());
   };
   const total = known().reduce((s, p) => s + unread(p.addr), 0);
   document.title = (total ? `(${total}) ` : '') + 'intern-groupchat';
 }
+function setFolder(a, f) {
+  f ? folders[a] = f : delete folders[a];
+  store('gc-folders', folders); drawPeers();
+}
+function editFolder(g) {
+  const f = prompt(`Rename folder "${g}" (empty: delete it, its chats go back under their owners)`, g);
+  if (f === null) return;
+  const i = folderList.indexOf(g);
+  if (i >= 0) folderList.splice(i, 1);
+  if (f.trim()) folderList.push(f.trim());
+  for (const a in folders) if (folders[a] === g) f.trim() ? folders[a] = f.trim() : delete folders[a];
+  store('gc-folderlist', folderList); store('gc-folders', folders); drawPeers();
+}
+$('newf').onclick = () => {
+  const f = (prompt('New folder name') || '').trim();
+  if (!f || folderList.includes(f)) return;
+  folderList.push(f); store('gc-folderlist', folderList); drawPeers();
+};
+const nav = $('peers'), isChat = e => e.dataTransfer.types.includes('text/gc-addr');
+nav.ondragstart = e => { const d = e.target.closest('[data-a]'); if (d) { e.dataTransfer.setData('text/gc-addr', d.dataset.a); dragging = true; } };
+nav.ondragend = () => { dragging = false; drawPeers(); };
+nav.ondragover = e => { const d = e.target.closest('[data-drop]'); if (d && isChat(e)) { e.preventDefault(); d.classList.add('over'); } };
+nav.ondragleave = e => { const d = e.target.closest('[data-drop]'); if (d) d.classList.remove('over'); };
+nav.ondrop = e => {
+  const d = e.target.closest('[data-drop]');
+  if (!d || !isChat(e)) return;
+  e.preventDefault(); dragging = false;
+  const g = d.dataset.drop, custom = folderList.includes(g) || Object.values(folders).includes(g);
+  setFolder(e.dataTransfer.getData('text/gc-addr'), custom ? g : null);  // dropping on an owner group = back to its owner
+};
 function select(p) {
+  pending = []; drawPending();
   sel = { ...p, disp: disp(p.addr) };
   wanted = sel.disp;
   history.replaceState(null, '', '#' + encodeURIComponent(sel.disp));
@@ -169,11 +219,12 @@ function drawLog() {
   if (!sel) return;
   const mine = msgs.filter(m => !conv(m) || conv(m) === sel.addr);
   $('log').innerHTML = mine.map(m =>
-    `<div class="msg ${m.from === 'me' ? 'me' : m.from === 'hub' ? 'hub' : ''}"><button class="copy" data-seq="${m.seq}">copy</button><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : esc(disp(m.from))} · ${new Date(m.ts * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small>${md(m.text)}${m.url ? ` <a href="${new URL(m.url).pathname}" download>download</a>` : ''}</div>`
+    `<div class="msg ${m.from === 'me' ? 'me' : m.from === 'hub' ? 'hub' : ''}"><button class="copy" data-seq="${m.seq}">copy</button><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : esc(disp(m.from))} · ${new Date(m.ts * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small>${md(m.text)}${m.url ? attachment(m) : ''}</div>`
   ).join('');
   const last = mine[mine.length - 1];
   if (last && last.from === 'me' && Date.now() / 1000 - last.ts < 1800) $('log').innerHTML += `<div class="wait">waiting for ${esc(sel.disp)}…</div>`;
   $('log').scrollTop = $('log').scrollHeight;
+  for (const el of $('log').querySelectorAll('img, video')) el.onload = el.onloadedmetadata = () => $('log').scrollTop = $('log').scrollHeight;
   if (!document.hidden && mine.length) { read[sel.addr] = Math.max(...mine.map(m => m.seq)); store('gc-read', read); }
 }
 function notify(m) {
@@ -188,7 +239,7 @@ async function poll() {
     if (r.status === 403) { $('me').textContent = 'not recognised: open this page from a device on the tailnet'; return; }
     const s = await r.json();
     $('me').textContent = me = s.user;
-    seq = s.seq; peers = s.peers;
+    seq = s.seq; peers = s.peers; ttl = s.file_ttl_days || ttl;
     msgs.push(...s.msgs);
     s.msgs.forEach(notify);
     first = false;
@@ -207,32 +258,51 @@ async function poll() {
 $('f').onsubmit = async e => {
   e.preventDefault();
   const text = $('text').value.trim();
-  if (!text || !sel) return;
+  if ((!text && !pending.length) || !sel) return;
   $('text').value = '';
-  await fetch('/api/send', { method: 'POST', body: JSON.stringify({ to: sel.addr, text }) });
+  if (pending.length) await upload(pending.splice(0));
+  drawPending();
+  if (text) await post('/api/send', JSON.stringify({ to: sel.addr, text }));
 };
 $('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } };
 async function upload(files) {
   if (!sel || !sel.online) return;
   for (const f of files) {
     $('status').textContent = `uploading ${f.name}…`;
-    const r = await fetch(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+    const r = await post(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, f);
     $('status').textContent = r.ok ? '' : `upload of ${f.name} failed`;
   }
 }
 $('file').onclick = () => $('pick').click();
 $('pick').onchange = () => { upload([...$('pick').files]); $('pick').value = ''; };
+function drawPending() {
+  $('status').innerHTML = pending.map((f, i) => `<span class="chip">📎 ${esc(f.name)} (${f.lines} lines)<button data-i="${i}" title="paste inline instead">×</button></span>`).join('') +
+    (pending.length ? ' goes with your next message' : '');
+  for (const b of $('status').querySelectorAll('[data-i]')) b.onclick = async () => {
+    const [f] = pending.splice(b.dataset.i, 1);
+    $('text').setRangeText(await f.text(), $('text').selectionStart, $('text').selectionEnd, 'end');
+    drawPending();
+  };
+}
 $('text').onpaste = e => {
   const files = [...e.clipboardData.files];
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const text = e.clipboardData.getData('text');
+  if (!files.length && (text.length > 3000 || text.split('\n').length > 50)) {  // long logs go as a file, not into the agent's prompt
+    e.preventDefault();
+    const f = new File([text], `paste-${stamp}.txt`, { type: 'text/plain' });
+    f.lines = text.split('\n').length;
+    pending.push(f); drawPending();
+    return;
+  }
   if (!files.length) return;
   e.preventDefault();
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   upload(files.map(f => f.name === 'image.png' ? new File([f], `paste-${stamp}.png`, { type: f.type }) : f));
 };
 const sec = $('main');
-sec.ondragover = e => { e.preventDefault(); if (sel && sel.online) sec.classList.add('drop'); };
+sec.ondragover = e => { if (!e.dataTransfer.types.includes('Files')) return; e.preventDefault(); if (sel && sel.online) sec.classList.add('drop'); };
 sec.ondragleave = e => { if (!sec.contains(e.relatedTarget)) sec.classList.remove('drop'); };
-sec.ondrop = e => { e.preventDefault(); sec.classList.remove('drop'); upload([...e.dataTransfer.files]); };
+sec.ondrop = e => { if (!e.dataTransfer.types.includes('Files')) return; e.preventDefault(); sec.classList.remove('drop'); upload([...e.dataTransfer.files]); };
 
 $('q').oninput = drawPeers;
 $('q').onkeydown = e => {
@@ -251,7 +321,7 @@ if (window.Notification && isSecureContext && Notification.permission === 'defau
   $('notif').onclick = () => Notification.requestPermission().then(() => $('notif').hidden = true);
 }
 
-function showLog() { $('transcript').style.display = 'none'; $('log').style.display = ''; }
+function showLog() { $('transcript').style.display = 'none'; $('log').style.display = ''; $('hist').textContent = 'History'; }
 function drawTranscript() {
   const { d, who } = transcript, q = $('tq') ? $('tq').value.toLowerCase() : '';
   const items = q ? d.items.filter(i => i.text.toLowerCase().includes(q)) : d.items;
@@ -270,7 +340,7 @@ function drawTranscript() {
 }
 async function loadTranscript() {
   const t = $('transcript'), who = sel;
-  showLog(); t.style.display = 'block'; $('log').style.display = 'none';
+  showLog(); t.style.display = 'block'; $('log').style.display = 'none'; $('hist').textContent = 'Chat';
   t.innerHTML = '<p>fetching transcript…</p>';
   const r = await fetch('/api/transcript?to=' + encodeURIComponent(who.addr));
   const d = await r.json();
@@ -289,7 +359,10 @@ async function loadTranscript() {
   drawTranscript();
   t.scrollTop = t.scrollHeight;
 }
-$('hist').onclick = loadTranscript;
+$('hist').onclick = () => $('transcript').style.display === 'block' ? showLog() : loadTranscript();
+const theme = () => $('theme').textContent = document.documentElement.dataset.theme === 'light' ? '☾' : '☀';
+$('theme').onclick = () => { const t = document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; store('gc-theme', t); theme(); };
+theme();
 poll();
 </script>
 </body>

@@ -130,6 +130,7 @@ async def relay(c, m):
                 f.write(base64.b64decode(m["data"]))
             fwd.update(name=name, data=m["data"], url=f"http://{HOST}:{HTTP_PORT}/{fid}/{name}")
         await tc.send(fwd)
+        return fwd.get("url")
     elif m["t"] == "transcript_req":
         target = find(m["to"])
         vis = next((v for v in visible(c.user) if v["addr"] == m["to"]), None)

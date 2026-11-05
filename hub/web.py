@@ -1,11 +1,14 @@
 """Browser UI for the hub: one page, identity from tailscale like everything else.
 Each browser user is a virtual session <user>/web, so agents can reply to it."""
 import __main__ as hub  # hub.py runs as the script
-import asyncio, base64, json, os, re, threading, time, uuid
+import asyncio, base64, json, os, re, shutil, threading, time, uuid
 from urllib.parse import parse_qs, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IDLE = 120  # seconds without a poll before the web session disappears from peers
+FILE_TTL_DAYS = float(os.environ.get("GC_FILE_TTL_DAYS", 7))  # files in the store are deleted after this
+# chat histories, outside the file store (which is served over http)
+HISTORY = os.environ.get("GC_WEB_HISTORY") or os.path.join(os.path.dirname(hub.STORE), "web-history")
 parked = {}  # user -> idle WebConn, kept so the chat history survives closing the tab
 
 
@@ -51,7 +54,9 @@ class WebConn(hub.Conn):
     def __init__(self, user):
         super().__init__(user, "web", None)
         self.sessions = {"web": {"acl": [], "history": False}}
-        self.queue, self.seq, self.seen = [], 0, time.time()
+        self.path = os.path.join(HISTORY, re.sub(r"[^\w@.-]", "_", user) + ".json")
+        saved = json.load(open(self.path)) if os.path.exists(self.path) else {"queue": [], "seq": 0}
+        self.queue, self.seq, self.seen = saved["queue"], saved["seq"], time.time()
         self.cv = threading.Condition()
         self.pending = {}  # transcript req -> [event, reply]
 
@@ -80,6 +85,10 @@ class WebConn(hub.Conn):
         with self.cv:
             self.seq += 1
             self.queue = (self.queue + [{"seq": self.seq, "ts": time.time(), **item}])[-300:]
+            os.makedirs(HISTORY, exist_ok=True)
+            with open(self.path + ".tmp", "w") as f:
+                json.dump({"queue": self.queue, "seq": self.seq}, f)
+            os.replace(self.path + ".tmp", self.path)
             self.cv.notify_all()
 
     def wait(self, after, timeout):
@@ -102,8 +111,20 @@ def run(coro, timeout=130):
     return asyncio.run_coroutine_threadsafe(coro, hub.loop).result(timeout)
 
 
+def expire_files():
+    cutoff = time.time() - FILE_TTL_DAYS * 86400
+    for d in os.listdir(hub.STORE):
+        p = os.path.join(hub.STORE, d)
+        if re.fullmatch(r"[0-9a-f]{12}", d) and os.path.getmtime(p) < cutoff:
+            shutil.rmtree(p, ignore_errors=True)
+
+
 async def expire():
+    swept = 0
     while True:
+        if time.time() - swept > 3600:
+            expire_files()
+            swept = time.time()
         await asyncio.sleep(30)
         stale = [c for c in hub.conns if isinstance(c, WebConn) and time.time() - c.seen > IDLE]
         for c in stale:
@@ -145,7 +166,7 @@ class Handler(hub.Files):
             c = web_conn(u)
             msgs = c.wait(int(q.get("after", 0)), float(q.get("wait", 15)))
             peers = [v for v in hub.visible(u) if v["addr"] != f"{u}/web"]
-            self.reply(200, {"user": u, "peers": peers, "msgs": msgs, "seq": c.seq})
+            self.reply(200, {"user": u, "peers": peers, "msgs": msgs, "seq": c.seq, "file_ttl_days": FILE_TTL_DAYS})
         elif url.path == "/api/transcript":
             u = self.user()
             if not u:
@@ -171,11 +192,19 @@ class Handler(hub.Files):
             else:
                 self.reply(200, {"cwd": r["cwd"], "items": render(base64.b64decode(r["data"]).decode(errors="replace"))})
         else:
+            self.sandbox = True  # files from peers run in an opaque origin, away from the API
             super().do_GET()
+
+    def end_headers(self):
+        if getattr(self, "sandbox", False):
+            self.send_header("Content-Security-Policy", "sandbox allow-scripts allow-popups allow-downloads")
+        super().end_headers()
 
     def do_POST(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if self.headers.get("X-GC") != "1":  # other sites can't set this header, so they can't post as you
+            return self.reply(403, {"error": "missing X-GC header"})
         u = self.user()
         if not u:
             return
@@ -186,9 +215,10 @@ class Handler(hub.Files):
             c.push({"from": "me", "to": m["to"], "text": m["text"]})
             run(hub.relay(c, {"t": "send", "to": m["to"], "from": "web", "payload": cross_session(m["text"])}))
         elif url.path == "/api/file":
-            c.push({"from": "me", "to": q["to"], "text": f"sent file {os.path.basename(q['name'])}"})
-            run(hub.relay(c, {"t": "file", "to": q["to"], "from": "web", "name": os.path.basename(q["name"]),
-                              "data": base64.b64encode(body).decode()}))
+            name = os.path.basename(q["name"])
+            link = run(hub.relay(c, {"t": "file", "to": q["to"], "from": "web", "name": name, "data": base64.b64encode(body).decode()}))
+            if link:
+                c.push({"from": "me", "to": q["to"], "text": f"sent file {name}", "url": link})
         else:
             return self.reply(404, {"error": "no such endpoint"})
         self.reply(200, {"ok": True})
