@@ -22,6 +22,9 @@
   nav div.off { color: var(--mute); }
   nav small { color: var(--mute); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav .none { color: var(--mute); cursor: default; }
+  nav .grp { padding: 10px 12px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); user-select: none; }
+  nav .mv { float: right; padding: 0 6px; margin-left: 4px; font-size: 12px; opacity: 0; }
+  nav div:hover > .mv { opacity: 1; }
   .badge { float: right; background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 12px; line-height: 18px; margin-top: 2px; }
   section { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   section.drop::after { content: "drop files to send"; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 85%, transparent); font-size: 18px; }
@@ -77,12 +80,16 @@
 <input type="file" id="pick" multiple hidden>
 <script>
 const $ = id => document.getElementById(id);
-let seq = 0, peers = [], sel = null, msgs = [], first = true, transcript = null;
+let seq = 0, peers = [], sel = null, msgs = [], first = true, transcript = null, me = '';
 const disp = a => { const [u, n] = a.split('/'); return u.split('@')[0] + ':' + n; };
 const esc = s => s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const conv = m => m.from === 'me' || m.from === 'hub' ? m.to : m.from;  // which chat a message belongs to
 const store = (k, v) => { try { v === undefined ? (v = JSON.parse(localStorage[k])) : (localStorage[k] = JSON.stringify(v)); } catch (e) {} return v; };
 const read = store('gc-read') || {};  // addr -> last seen seq
+const folders = store('gc-folders') || {};  // addr -> folder name chosen by the user
+const collapsed = store('gc-collapsed') || {};  // group name -> true
+const owner = a => a.split('/')[0];
+const group = p => folders[p.addr] || (owner(p.addr) === me ? 'mine' : owner(p.addr).split('@')[0]);
 let wanted = decodeURIComponent(location.hash.slice(1));
 
 function md(s) {
@@ -118,13 +125,32 @@ function known() {  // online peers, plus anyone we have a chat with (shown as o
 }
 function drawPeers() {
   const q = $('q').value.toLowerCase();
-  const list = known().filter(p => (disp(p.addr) + ' ' + (p.cwd || '')).toLowerCase().includes(q));
-  $('peers').innerHTML = list.map(p => {
-    const n = unread(p.addr);
-    const info = p.online ? [p.machine, p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
-    return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" title="${esc(info)}">${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
+  const groups = {};
+  for (const p of known().filter(p => (disp(p.addr) + ' ' + (p.cwd || '') + ' ' + group(p)).toLowerCase().includes(q)))
+    (groups[group(p)] ||= []).push(p);
+  const custom = new Set(Object.values(folders));  // user folders first, then owners
+  const names = Object.keys(groups).sort((a, b) => custom.has(b) - custom.has(a) || a.localeCompare(b));
+  $('peers').innerHTML = names.map(g => {
+    const shut = collapsed[g] && !q, n = groups[g].reduce((s, p) => s + unread(p.addr), 0);
+    return `<div class="grp" data-g="${esc(g)}">${shut ? '▸' : '▾'} ${esc(g)}${shut && n ? `<span class="badge">${n}</span>` : ''}</div>` +
+      (shut ? '' : groups[g].sort((a, b) => b.online - a.online).map(p => {
+        const n = unread(p.addr);
+        const info = p.online ? [p.machine, p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
+        return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" title="${esc(info)}"><button class="mv" title="move to a folder">⋯</button>${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
+      }).join(''));
   }).join('') || `<div class="none">${q ? 'no match' : 'no shared sessions online'}</div>`;
-  for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = () => select(known().find(p => p.addr === d.dataset.a));
+  for (const d of $('peers').querySelectorAll('[data-g]')) d.onclick = () => {
+    collapsed[d.dataset.g] ? delete collapsed[d.dataset.g] : collapsed[d.dataset.g] = true;
+    store('gc-collapsed', collapsed); drawPeers();
+  };
+  for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = e => {
+    const a = d.dataset.a;
+    if (!e.target.classList.contains('mv')) return select(known().find(p => p.addr === a));
+    const f = prompt(`Folder for ${disp(a)} (empty: back under ${owner(a) === me ? 'mine' : owner(a).split('@')[0]})`, folders[a] || '');
+    if (f === null) return;
+    f.trim() ? folders[a] = f.trim() : delete folders[a];
+    store('gc-folders', folders); drawPeers();
+  };
   const total = known().reduce((s, p) => s + unread(p.addr), 0);
   document.title = (total ? `(${total}) ` : '') + 'intern-groupchat';
 }
@@ -161,7 +187,7 @@ async function poll() {
     const r = await fetch(`/api/state?after=${seq}&wait=${first ? 0 : 15}`);
     if (r.status === 403) { $('me').textContent = 'not recognised: open this page from a device on the tailnet'; return; }
     const s = await r.json();
-    $('me').textContent = s.user;
+    $('me').textContent = me = s.user;
     seq = s.seq; peers = s.peers;
     msgs.push(...s.msgs);
     s.msgs.forEach(notify);
