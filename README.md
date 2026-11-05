@@ -8,12 +8,13 @@ Design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Needs: python3 and Claude Code ≥ 2.1.224 on every machine, Tailscale on the hub. Clients
 run their own userspace Tailscale (no root): on Linux the installer downloads it, on macOS
-`brew install tailscale` first.
+`brew install tailscale` first. Windows: use Claude Code inside WSL and install there (the
+bridge needs Unix sockets); the web page works from the Windows browser with the Tailscale app.
 
 ## Hub (once, on an always-on machine — e.g. the jetson)
 
 ```sh
-git clone git@github.com:olivefi/intern-groupchat.git && cd intern-groupchat
+git clone https://github.com/olivefi/intern-groupchat.git && cd intern-groupchat
 GC_STORE=/mnt/ssd/gc-hub/store hub/install.sh     # system service, starts after tailscale at boot
 ```
 It prints the hub node name (e.g. `gc-hub.tail4e78b.ts.net`). If `tailscale status` complains
@@ -25,7 +26,7 @@ Revoke = unshare.
 
 Accept the hub share link (any Tailscale account: GitHub/Google/…), then:
 ```sh
-git clone git@github.com:olivefi/intern-groupchat.git ~/.gc/intern-groupchat
+git clone https://github.com/olivefi/intern-groupchat.git ~/.gc/intern-groupchat
 ~/.gc/intern-groupchat/install.sh gc-hub.<tailnet>.ts.net
 ```
 It prints one login link — open it, done. Nothing else changes. The client runs its own
