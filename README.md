@@ -47,6 +47,10 @@ have a system Tailscale logged in and no such VPN, `--system-tailscale` uses it 
 | "fork alice:pr-123 here" | starts a local background session with Alice's whole conversation as context; `claude attach alice-pr-123-fork` |
 | "wait for alice:pr-123's answer" | your session idles until the reply arrives |
 
+Share names are matched case-insensitively against tailscale logins. For friendlier names
+put a map in `~/.gc-hub/aliases.json` on the hub, e.g. `{"joe": "jcchurch13@github"}`
+(`GC_ALIASES` to relocate; re-read on change).
+
 Name a session with `claude --name pr-123` (or `/rename`) so it's recognisable; otherwise
 it's the auto name. You always see your own sessions on your other machines.
 

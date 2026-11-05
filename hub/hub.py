@@ -6,6 +6,7 @@ import asyncio, base64, functools, http.server, json, os, subprocess, threading,
 PORT = int(os.environ.get("GC_PORT", 7777))
 HTTP_PORT = int(os.environ.get("GC_HTTP_PORT", 7778))
 STORE = os.path.expanduser(os.environ.get("GC_STORE", "~/.gc-hub/store"))
+ALIASES = os.path.expanduser(os.environ.get("GC_ALIASES", "~/.gc-hub/aliases.json"))  # {"oliver": "olivefi@github"}
 DEV_TRUST_HELLO = os.environ.get("GC_DEV_TRUST_HELLO") == "1"  # local testing only: take the user from hello
 MAX_LINE = 96 * 1024 * 1024
 
@@ -51,8 +52,28 @@ def addr(c, name):
     return f"{c.user}/{name}"
 
 
+_aliases = (None, {})
+
+
+def aliases():
+    """Friendly name -> login map, re-read whenever the file changes (no hub restart needed)."""
+    global _aliases
+    try:
+        mtime = os.stat(ALIASES).st_mtime
+        if mtime != _aliases[0]:
+            with open(ALIASES) as f:
+                _aliases = (mtime, {k.lower(): v for k, v in json.load(f).items()})
+    except FileNotFoundError:
+        _aliases = (None, {})
+    except Exception as e:
+        print("aliases:", e, flush=True)  # keep the last good map on a bad edit
+    return _aliases[1]
+
+
 def in_acl(user, acl):
-    return "*" in acl or user in acl or user.split("@")[0] in acl
+    names = {a.lower() for a in acl}
+    names |= {aliases().get(a, "").lower() for a in names}
+    return "*" in names or user.lower() in names or user.split("@")[0].lower() in names
 
 
 def own(c, user):

@@ -7,6 +7,7 @@
 # also works under VPN clients such as Cisco Secure Client that block other interfaces.
 set -e
 hub=${1:?usage: install.sh <hub address[:port]> [--system-tailscale]}
+[[ "$hub" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || { echo "bad hub address '$hub' (expected e.g. gc-hub.<tailnet>.ts.net)"; exit 1; }
 dir=$(cd "$(dirname "$0")" && pwd)
 command -v python3 >/dev/null || { echo "python3 is required"; exit 1; }
 command -v claude >/dev/null || { echo "claude (Claude Code) is required"; exit 1; }
@@ -47,6 +48,12 @@ else
     echo " ok"
   fi
   echo "tailscale node: $($cli status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
+  node=${hub%%:*}; node=${node%%.*}
+  if ! $cli status | grep -qw "$node"; then
+    echo; echo "!!! $node is not visible from this tailnet. You probably logged in before accepting the"
+    echo "    hub owner's invite (or with a different account). Accept the invite, then rerun:"
+    echo "    $cli up --force-reauth"
+  fi
 fi
 
 ~/.gc/bin/gc ensure-bridge

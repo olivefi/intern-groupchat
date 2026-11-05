@@ -83,6 +83,7 @@ class Bridge:
         self.pending = {}                             # req id -> future (transcript requests)
         self.published = None
         self.http_port = 7778
+        self.last_error = None
 
     # ---- hub link -------------------------------------------------------------------
     async def hub(self, obj):
@@ -123,6 +124,7 @@ class Bridge:
                     if m["t"] == "welcome":
                         self.user = m["user"]
                         self.http_port = m.get("http_port", 7778)
+                        self.last_error = None
                         print(f"connected to {CFG['hub']} as {self.user}", flush=True)
                     elif m["t"] == "peers":
                         await self.sync_peers(m["sessions"])
@@ -135,7 +137,9 @@ class Bridge:
                     elif m["t"] == "error":
                         await self.notify(m.get("re"), f"gc: {m['msg']}")
             except Exception as e:
-                print("hub:", e, flush=True)
+                if str(e) != self.last_error:  # log each distinct failure once, not every 3 s
+                    print("hub:", e, flush=True)
+                self.last_error = str(e)
             self.w = None
             await asyncio.sleep(3)
 
@@ -317,7 +321,7 @@ class Bridge:
         try:
             m = json.loads(await r.readline())
             if m["cmd"] == "status":
-                res.update(user=self.user, connected=bool(self.w), machine=MACHINE,
+                res.update(user=self.user, connected=bool(self.w), hub=CFG["hub"], last_error=self.last_error, machine=MACHINE,
                            peers=[display(a) for a in self.peers],
                            history=[display(a) for a, s in self.peers.items() if s.get("history")],
                            shared=load(SHARED, {}))
