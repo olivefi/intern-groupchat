@@ -55,7 +55,7 @@
 <input type="file" id="pick" hidden>
 <script>
 const $ = id => document.getElementById(id);
-let seq = 0, peers = [], sel = null, msgs = [];
+let seq = 0, peers = [], sel = null, msgs = [], first = true;
 const disp = a => { const [u, n] = a.split('/'); return u.split('@')[0] + ':' + n; };
 const esc = s => s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
 const same = a => a.includes(':') ? disp(a) === sel.disp : a === sel.addr;
@@ -83,7 +83,8 @@ function drawLog() {
 }
 async function poll() {
   try {
-    const r = await fetch('/api/state?after=' + seq);
+    const r = await fetch(`/api/state?after=${seq}&wait=${first ? 0 : 15}`);
+    first = false;
     if (r.status === 403) { $('me').textContent = 'not recognised: open this page from a device on the tailnet'; return; }
     const s = await r.json();
     $('me').textContent = s.user;

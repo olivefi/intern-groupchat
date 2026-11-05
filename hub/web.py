@@ -138,7 +138,7 @@ class Handler(hub.Files):
             if not u:
                 return
             c = web_conn(u)
-            msgs = c.wait(int(q.get("after", 0)), 15)
+            msgs = c.wait(int(q.get("after", 0)), float(q.get("wait", 15)))
             peers = [v for v in hub.visible(u) if v["addr"] != f"{u}/web"]
             self.reply(200, {"user": u, "peers": peers, "msgs": msgs, "seq": c.seq})
         elif url.path == "/api/transcript":
