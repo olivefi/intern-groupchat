@@ -50,12 +50,13 @@ def shared_entry(v):
 
 
 def local_sessions():
-    """real sessions on this machine, by name"""
-    out = {}
+    """real sessions on this machine, by name (the share name from `gc share --as`, if any)"""
+    out, shared = {}, load(SHARED, {})
     for f in glob.glob(f"{SESS}/*.json"):
         r = load(f, None)
         if r and r.get("pid", 0) < FAKE_BASE and os.path.exists(r.get("messagingSocketPath", "")):
-            out[r["name"]] = r
+            v = shared.get(r.get("sessionId"))
+            out[(isinstance(v, dict) and v.get("name")) or r["name"]] = r
     return out
 
 
@@ -176,7 +177,7 @@ class Bridge:
                 pub = []
                 for n, r in local_sessions().items():
                     acl, hist = shared_entry(shared.get(r["sessionId"], []))
-                    pub.append({"name": n, "acl": acl, "history": hist})
+                    pub.append({"name": n, "acl": acl, "history": hist, "cwd": r["cwd"].replace(os.path.expanduser("~"), "~", 1)})
                 if pub != self.published:
                     await self.hub({"t": "publish", "sessions": pub})
                     self.published = pub

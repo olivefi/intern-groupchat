@@ -16,5 +16,11 @@ messages here like any peer message. Remote sessions shared with you appear as
 - Unshare: `"$HOME/.gc/bin/gc" unshare`
 - Status / who can see what: `"$HOME/.gc/bin/gc" status`
 
+- Name: if the user named the session (or asks for a name), it is used as is. Otherwise `gc share`
+  prints a note that the name is automatic: then run the same share command again with
+  `--as <name>`, a short kebab-case name for what this session is doing (`slope-plot`,
+  `pr-123-review`, `velocity-clamp-bug`), and tell the user the name. The share name sticks
+  for later `gc share` calls on this session.
+
 Run the command with Bash (it identifies this session from the environment). Report the one-line result. If it says the bridge isn't running, run
 `"$HOME/.gc/bin/gc" ensure-bridge` and retry once.

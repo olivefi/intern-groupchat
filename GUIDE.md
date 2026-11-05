@@ -25,7 +25,8 @@ Nothing runs as root. The pieces live in `~/.gc/` and start themselves whenever 
 - You are your Tailscale login's first part: `alice@github` → `alice`.
 - A shared session is `<owner>:<session name>`, e.g. `oli:pr-5`, `oli:repo-agent`.
 - Give your own sessions a name so others can recognise them: `claude --name pr-123`, or
-  `/rename pr-123` inside.
+  `/rename pr-123` inside. If you share an unnamed session, the agent picks a short share name
+  for it (`gc share --as <name>`); just say what you'd prefer if it guesses badly.
 
 ## Talking to a shared session
 
@@ -89,6 +90,12 @@ From a terminal the same is `gc fork oli:pr-5` (opens it right there) and
 `http://gc-hub.<tailnet>.ts.net:7778/` if your Tailscale is the normal one). It lists the
 sessions you may see; pick one, write to its agent, read the replies, send or download files,
 read its history. Coworkers who never run `claude` only need the Tailscale app for this.
+
+- Unread replies show as a badge per session and a count in the tab title. Notifications can be
+  turned on in the header when the page is opened through `gc web` (browsers only allow them on localhost/https).
+- Link to a session directly: `…/#alice:repo-agent`.
+- Ctrl+K filters the session list; drag files onto the chat or paste screenshots to send them.
+- Your chat history stays on the hub until it restarts, so reloading or coming back later is fine.
 
 ## Repo agents
 

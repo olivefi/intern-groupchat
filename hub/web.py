@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IDLE = 120  # seconds without a poll before the web session disappears from peers
+parked = {}  # user -> idle WebConn, kept so the chat history survives closing the tab
 
 
 def cross_session(text):
@@ -70,9 +71,12 @@ class WebConn(hub.Conn):
         elif t == "file":
             item = {"from": obj["from"], "text": f"sent you a file: {obj['name']}", "url": obj["url"]}
         elif t == "error":
-            item = {"from": "hub", "text": obj["msg"]}
+            item = {"from": "hub", "to": obj.get("to"), "text": obj["msg"]}
         else:
             return
+        self.push(item)
+
+    def push(self, item):
         with self.cv:
             self.seq += 1
             self.queue = (self.queue + [{"seq": self.seq, "ts": time.time(), **item}])[-300:]
@@ -87,7 +91,7 @@ class WebConn(hub.Conn):
 def web_conn(user):
     c = hub.conn_of(user, "web")
     if not c:
-        c = WebConn(user)
+        c = parked.pop(user, None) or WebConn(user)
         hub.conns.add(c)
         run(hub.push_peers())
     c.seen = time.time()
@@ -104,6 +108,7 @@ async def expire():
         stale = [c for c in hub.conns if isinstance(c, WebConn) and time.time() - c.seen > IDLE]
         for c in stale:
             hub.conns.discard(c)
+            parked[c.user] = c
         if stale:
             await hub.push_peers()
 
@@ -178,8 +183,10 @@ class Handler(hub.Files):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         if url.path == "/api/send":
             m = json.loads(body)
+            c.push({"from": "me", "to": m["to"], "text": m["text"]})
             run(hub.relay(c, {"t": "send", "to": m["to"], "from": "web", "payload": cross_session(m["text"])}))
         elif url.path == "/api/file":
+            c.push({"from": "me", "to": q["to"], "text": f"sent file {os.path.basename(q['name'])}"})
             run(hub.relay(c, {"t": "file", "to": q["to"], "from": "web", "name": os.path.basename(q["name"]),
                               "data": base64.b64encode(body).decode()}))
         else:

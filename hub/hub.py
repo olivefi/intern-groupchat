@@ -82,7 +82,7 @@ def own(c, user):
 
 def visible(user):
     return [{"addr": addr(c, n), "user": c.user, "machine": c.machine, "name": n,
-             "history": s["history"] or own(c, user)}
+             "history": s["history"] or own(c, user), "cwd": s.get("cwd")}
             for c in conns for n, s in c.sessions.items()
             if own(c, user) or in_acl(user, s["acl"]) or (addr(c, n), user) in contacts]
 
@@ -111,7 +111,7 @@ async def relay(c, m):
         src = addr(c, m["from"])
         target = find(m["to"])
         if not target or not any(v["addr"] == m["to"] for v in visible(c.user)):
-            await c.send({"t": "error", "re": m["from"], "msg": f"{m['to']} is not online or not shared with you"})
+            await c.send({"t": "error", "re": m["from"], "to": m["to"], "msg": f"{m['to']} is not online or not shared with you"})
             return
         tc, tname = target
         if (src, tc.user) not in contacts:
@@ -163,7 +163,8 @@ async def handle(reader, writer):
         while line := await reader.readline():
             m = json.loads(line)
             if m["t"] == "publish":
-                c.sessions = {s["name"]: {"acl": s.get("acl", []), "history": bool(s.get("history"))} for s in m["sessions"]}
+                c.sessions = {s["name"]: {"acl": s.get("acl", []), "history": bool(s.get("history")), "cwd": s.get("cwd")}
+                              for s in m["sessions"]}
                 await push_peers()
             else:
                 await relay(c, m)

@@ -3,7 +3,8 @@
 
   gc ensure-bridge                 start tailscale (userspace) and the bridge if not running (plugin hook)
   gc status | gc peers
-  gc share   [--name N] [--with-history] <who...>   share a session ('alice', 'bob@github', '*')
+  gc share   [--name N] [--as NAME] [--with-history] <who...>   share a session ('alice', 'bob@github', '*'),
+                                                   optionally under a different name than the session's own
   gc unshare [--name N]                              (default session: the one this runs inside of)
   gc send-file [--name N] <peer> <path>              e.g. gc send-file alice:pr-123 plot.html
   gc transcript <peer>             fetch a peer's transcript (needs --with-history on their side)
@@ -99,12 +100,21 @@ def session(args):
     sys.exit("gc: say which session: --name <name> (or run this from inside a claude session)")
 
 
+def shared():
+    try:
+        return json.load(open(f"{GC}/shared.json"))
+    except Exception:
+        return {}
+
+
+def share_name(r):
+    v = shared().get(r["sessionId"])
+    return (isinstance(v, dict) and v.get("name")) or r["name"]
+
+
 def set_shared(sid, entry):
     p = f"{GC}/shared.json"
-    try:
-        d = json.load(open(p))
-    except Exception:
-        d = {}
+    d = shared()
     if entry is None:
         d.pop(sid, None)
     else:
@@ -152,19 +162,23 @@ def main(argv):
         else:
             print(json.dumps(st, indent=1))
     elif cmd == "share":
-        hist = flag(args, "--with-history")
+        hist, alias = flag(args, "--with-history"), flag(args, "--as", True)
         r = session(args)
         args or sys.exit("gc: share with whom? names, logins or '*'")
-        set_shared(r["sessionId"], {"acl": args, "history": hist})
-        print(f"{r['name']} shared with {', '.join(args)}" + (" (with history)" if hist else ""))
+        name = alias or share_name(r)
+        set_shared(r["sessionId"], {"acl": args, "history": hist, "name": name})
+        print(f"shared as '{name}' with {', '.join(args)}" + (" (with history)" if hist else ""))
+        if not alias and r.get("nameSource") in (None, "auto", "derived") and name == r["name"]:
+            print("note: that is an automatic name; give it a short meaningful one with --as <name>")
     elif cmd == "unshare":
         r = session(args)
+        name = share_name(r)
         set_shared(r["sessionId"], None)
-        print(f"{r['name']} is private again")
+        print(f"{name} is private again")
     elif cmd == "send-file":
         r = session(args)
         len(args) == 2 or sys.exit("gc: send-file <peer> <path>")
-        ctrl({"cmd": "send-file", "to": args[0], "path": os.path.abspath(args[1]), "from": r["name"]})
+        ctrl({"cmd": "send-file", "to": args[0], "path": os.path.abspath(args[1]), "from": share_name(r)})
         print(f"sent {args[1]} to {args[0]}")
     elif cmd == "transcript":
         args or sys.exit("gc: transcript <peer>")

@@ -62,8 +62,8 @@ Share names are matched case-insensitively against tailscale logins. For friendl
 put a map in `~/.gc-hub/aliases.json` on the hub, e.g. `{"joe": "jcchurch13@github"}`
 (`GC_ALIASES` to relocate; re-read on change).
 
-Name a session with `claude --name pr-123` (or `/rename`) so it's recognisable; otherwise
-it's the auto name. You always see your own sessions on your other machines.
+Name a session with `claude --name pr-123` (or `/rename`) so it's recognisable. When an
+unnamed session is shared, its agent picks a short share name (`gc share --as <name>`). You always see your own sessions on your other machines.
 
 Receiving side: everything Claude Code already does with peer messages applies — messages
 can't approve permission prompts, and `"crossSessionInbound": "hold"` in settings makes
@@ -90,7 +90,7 @@ it shows the `gc fork` command to copy instead.
 
 ```
 ~/.gc/bin/gc status | peers
-~/.gc/bin/gc share   [--name <session>] [--with-history] <names...|*>   # default: the session it runs inside
+~/.gc/bin/gc share   [--name <session>] [--as <share name>] [--with-history] <names...|*>   # default: the session it runs inside
 ~/.gc/bin/gc unshare [--name <session>]
 ~/.gc/bin/gc send-file [--name <session>] <peer> <path>
 ~/.gc/bin/gc transcript <peer>                    # → ~/.gc/transcripts/<peer>-<time>.jsonl + .md

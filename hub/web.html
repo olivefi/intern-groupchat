@@ -11,39 +11,61 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); height: 100vh; display: flex; flex-direction: column; }
-  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   header small { color: var(--mute); }
   main { flex: 1; display: flex; min-height: 0; }
-  nav { width: 240px; border-right: 1px solid var(--line); overflow-y: auto; padding: 8px 0; }
+  aside { width: 260px; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  #q { margin: 8px; padding: 6px 8px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  nav { flex: 1; overflow-y: auto; }
   nav div { padding: 8px 16px; cursor: pointer; }
   nav div.sel { background: var(--me); }
-  nav small { color: var(--mute); display: block; }
+  nav div.off { color: var(--mute); }
+  nav small { color: var(--mute); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav .none { color: var(--mute); cursor: default; }
-  section { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .badge { float: right; background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 12px; line-height: 18px; margin-top: 2px; }
+  section { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  section.drop::after { content: "drop files to send"; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 85%, transparent); font-size: 18px; }
   #log { flex: 1; overflow-y: auto; padding: 16px; }
-  .msg { max-width: 75%; margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--them); white-space: pre-wrap; word-wrap: break-word; }
+  .msg { max-width: 75%; margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: var(--them); white-space: pre-wrap; word-wrap: break-word; position: relative; }
   .msg.me { background: var(--me); margin-left: auto; }
+  .msg.hub { color: #c2410c; }
   .msg small { display: block; color: var(--mute); font-size: 12px; }
-  .msg a { color: var(--accent); }
+  a { color: var(--accent); }
+  .copy { font-size: 11px; padding: 1px 6px; opacity: 0; position: absolute; top: 6px; right: 6px; }
+  .msg:hover > .copy, pre:hover > .copy { opacity: 1; }
+  pre { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
+  pre code { background: none; padding: 0; }
+  .wait { color: var(--mute); font-style: italic; margin: 6px 0; }
+  #status { color: var(--mute); font-size: 13px; padding: 0 16px; }
   form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
   textarea { flex: 1; resize: none; height: 60px; font: inherit; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
   button { font: inherit; padding: 0 14px; border: 1px solid var(--line); background: var(--them); color: var(--fg); border-radius: 6px; cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  #transcript { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  #transcript { flex: 1; overflow-y: auto; padding: 0 16px 16px; display: none; }
+  #transcript .bar { position: sticky; top: 0; background: var(--bg); padding: 12px 0 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #transcript .bar button { padding: 2px 10px; }
+  #transcript .bar input { font: inherit; padding: 2px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
   #transcript .tool { color: var(--mute); font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+  #transcript details { margin: 4px 0; }
+  #transcript summary { color: var(--mute); font-size: 13px; cursor: pointer; }
   #transcript .user { border-left: 3px solid var(--accent); padding-left: 10px; }
-  #transcript p { white-space: pre-wrap; }
+  #transcript .item { white-space: pre-wrap; margin: 12px 0; }
   code { background: var(--them); padding: 2px 6px; border-radius: 4px; }
-  @media (max-width: 700px) { nav { width: 120px; } .msg { max-width: 95%; } }
+  kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--mute); }
+  @media (max-width: 700px) { aside { width: 130px; } .msg { max-width: 95%; } }
 </style>
 </head>
 <body>
-<header><b>intern-groupchat</b><small id="me">connecting…</small></header>
+<header><b>intern-groupchat</b><span><button id="notif" hidden>enable notifications</button> <small id="me">connecting…</small></span></header>
 <main>
-  <nav id="peers"><div class="none">no shared sessions online</div></nav>
-  <section>
+  <aside>
+    <input id="q" placeholder="filter  (Ctrl+K)" autocomplete="off">
+    <nav id="peers"><div class="none">no shared sessions online</div></nav>
+  </aside>
+  <section id="main">
     <div id="log"></div>
     <div id="transcript"></div>
+    <div id="status"></div>
     <form id="f">
       <textarea id="text" placeholder="pick a session on the left, then write to its agent" disabled></textarea>
       <button type="submit" class="primary" disabled>Send</button>
@@ -52,77 +74,196 @@
     </form>
   </section>
 </main>
-<input type="file" id="pick" hidden>
+<input type="file" id="pick" multiple hidden>
 <script>
 const $ = id => document.getElementById(id);
-let seq = 0, peers = [], sel = null, msgs = [], first = true;
+let seq = 0, peers = [], sel = null, msgs = [], first = true, transcript = null;
 const disp = a => { const [u, n] = a.split('/'); return u.split('@')[0] + ':' + n; };
-const esc = s => s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
-const same = a => a.includes(':') ? disp(a) === sel.disp : a === sel.addr;
+const esc = s => s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const conv = m => m.from === 'me' || m.from === 'hub' ? m.to : m.from;  // which chat a message belongs to
+const store = (k, v) => { try { v === undefined ? (v = JSON.parse(localStorage[k])) : (localStorage[k] = JSON.stringify(v)); } catch (e) {} return v; };
+const read = store('gc-read') || {};  // addr -> last seen seq
+let wanted = decodeURIComponent(location.hash.slice(1));
 
+function md(s) {
+  const blocks = [];
+  s = esc(s).replace(/```[^\n]*\n?([\s\S]*?)```/g, (_, c) => (blocks.push(c.replace(/\n$/, '')), `\0${blocks.length - 1}\0`));
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/^#{1,6} (.*)$/gm, '<b>$1</b>')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
+  return s.replace(/\n*\0(\d+)\0\n*/g, (_, i) => `<pre><button class="copy">copy</button><code>${blocks[i]}</code></pre>`);
+}
+function copy(text, btn) {
+  if (navigator.clipboard && isSecureContext) navigator.clipboard.writeText(text);
+  else { const t = document.createElement('textarea'); t.value = text; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+  const old = btn.textContent; btn.textContent = 'copied'; setTimeout(() => btn.textContent = old, 1000);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.copy');
+  if (!b) return;
+  const pre = b.closest('pre');
+  copy(pre ? pre.querySelector('code').textContent : b.dataset.text ?? msgs.find(m => m.seq == b.dataset.seq).text, b);
+});
+
+const unread = a => msgs.filter(m => conv(m) === a && m.from !== 'me' && m.seq > (read[a] || 0)).length;
+function known() {  // online peers, plus anyone we have a chat with (shown as offline)
+  const all = peers.map(p => ({ ...p, online: true }));
+  for (const m of msgs) {
+    const a = conv(m);
+    if (a && !all.some(p => p.addr === a)) all.push({ addr: a, online: false });
+  }
+  return all;
+}
 function drawPeers() {
-  $('peers').innerHTML = peers.map(p =>
-    `<div class="${sel && sel.addr === p.addr ? 'sel' : ''}" data-a="${p.addr}">${disp(p.addr)}<small>${p.machine}${p.history ? ' · history' : ''}</small></div>`
-  ).join('') || '<div class="none">no shared sessions online</div>';
-  for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = () => select(peers.find(p => p.addr === d.dataset.a));
+  const q = $('q').value.toLowerCase();
+  const list = known().filter(p => (disp(p.addr) + ' ' + (p.cwd || '')).toLowerCase().includes(q));
+  $('peers').innerHTML = list.map(p => {
+    const n = unread(p.addr);
+    const info = p.online ? [p.machine, p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
+    return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" title="${esc(info)}">${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
+  }).join('') || `<div class="none">${q ? 'no match' : 'no shared sessions online'}</div>`;
+  for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = () => select(known().find(p => p.addr === d.dataset.a));
+  const total = known().reduce((s, p) => s + unread(p.addr), 0);
+  document.title = (total ? `(${total}) ` : '') + 'intern-groupchat';
 }
 function select(p) {
   sel = { ...p, disp: disp(p.addr) };
-  for (const el of ['text', 'file']) $(el).disabled = false;
-  $('f').querySelector('[type=submit]').disabled = false;
-  $('hist').hidden = !p.history; $('hist').disabled = !p.history;
-  $('transcript').style.display = 'none'; $('log').style.display = '';
+  wanted = sel.disp;
+  history.replaceState(null, '', '#' + encodeURIComponent(sel.disp));
+  $('text').disabled = $('file').disabled = $('f').querySelector('[type=submit]').disabled = !p.online;
+  $('text').placeholder = p.online ? `message ${sel.disp} — Enter sends, Shift+Enter newline, drop or paste files` : `${sel.disp} is offline`;
+  $('hist').hidden = $('hist').disabled = !p.history;
+  showLog();
   drawPeers(); drawLog();
+  if (p.online) $('text').focus();
 }
 function drawLog() {
   if (!sel) return;
-  $('log').innerHTML = msgs.filter(m => m.from === 'hub' || (m.from === 'me' ? m.to === sel.addr : same(m.from))).map(m =>
-    `<div class="msg ${m.from === 'me' ? 'me' : ''}"><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : disp(m.from)} · ${new Date(m.ts * 1000).toLocaleTimeString()}</small>${esc(m.text)}${m.url ? ` <a href="${new URL(m.url).pathname}" download>download</a>` : ''}</div>`
+  const mine = msgs.filter(m => !conv(m) || conv(m) === sel.addr);
+  $('log').innerHTML = mine.map(m =>
+    `<div class="msg ${m.from === 'me' ? 'me' : m.from === 'hub' ? 'hub' : ''}"><button class="copy" data-seq="${m.seq}">copy</button><small>${m.from === 'me' ? 'you' : m.from === 'hub' ? 'hub' : esc(disp(m.from))} · ${new Date(m.ts * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small>${md(m.text)}${m.url ? ` <a href="${new URL(m.url).pathname}" download>download</a>` : ''}</div>`
   ).join('');
+  const last = mine[mine.length - 1];
+  if (last && last.from === 'me' && Date.now() / 1000 - last.ts < 1800) $('log').innerHTML += `<div class="wait">waiting for ${esc(sel.disp)}…</div>`;
   $('log').scrollTop = $('log').scrollHeight;
+  if (!document.hidden && mine.length) { read[sel.addr] = Math.max(...mine.map(m => m.seq)); store('gc-read', read); }
+}
+function notify(m) {
+  if (first || m.from === 'me' || !window.Notification || Notification.permission !== 'granted') return;
+  if (!document.hidden && sel && conv(m) === sel.addr) return;
+  const n = new Notification(m.from === 'hub' ? 'hub' : disp(m.from), { body: m.text.slice(0, 200), tag: conv(m) || 'hub' });
+  n.onclick = () => { window.focus(); const p = known().find(p => p.addr === conv(m)); if (p) select(p); n.close(); };
 }
 async function poll() {
   try {
     const r = await fetch(`/api/state?after=${seq}&wait=${first ? 0 : 15}`);
-    first = false;
     if (r.status === 403) { $('me').textContent = 'not recognised: open this page from a device on the tailnet'; return; }
     const s = await r.json();
     $('me').textContent = s.user;
     seq = s.seq; peers = s.peers;
     msgs.push(...s.msgs);
+    s.msgs.forEach(notify);
+    first = false;
+    if (sel) {
+      const p = known().find(p => p.addr === sel.addr) || { addr: sel.addr, online: false };
+      if (p.online !== sel.online) select(p);
+    } else if (wanted) {
+      const p = known().find(p => disp(p.addr) === wanted);
+      if (p) select(p);
+    }
     drawPeers(); drawLog();
   } catch (e) { await new Promise(r => setTimeout(r, 3000)); }
   poll();
 }
+
 $('f').onsubmit = async e => {
   e.preventDefault();
   const text = $('text').value.trim();
   if (!text || !sel) return;
   $('text').value = '';
-  msgs.push({ from: 'me', to: sel.addr, ts: Date.now() / 1000, text });
-  drawLog();
   await fetch('/api/send', { method: 'POST', body: JSON.stringify({ to: sel.addr, text }) });
 };
 $('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } };
+async function upload(files) {
+  if (!sel || !sel.online) return;
+  for (const f of files) {
+    $('status').textContent = `uploading ${f.name}…`;
+    const r = await fetch(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
+    $('status').textContent = r.ok ? '' : `upload of ${f.name} failed`;
+  }
+}
 $('file').onclick = () => $('pick').click();
-$('pick').onchange = async () => {
-  const f = $('pick').files[0];
-  if (!f || !sel) return;
-  await fetch(`/api/file?to=${encodeURIComponent(sel.addr)}&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f });
-  msgs.push({ from: 'me', to: sel.addr, ts: Date.now() / 1000, text: `sent file ${f.name}` });
-  drawLog(); $('pick').value = '';
+$('pick').onchange = () => { upload([...$('pick').files]); $('pick').value = ''; };
+$('text').onpaste = e => {
+  const files = [...e.clipboardData.files];
+  if (!files.length) return;
+  e.preventDefault();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  upload(files.map(f => f.name === 'image.png' ? new File([f], `paste-${stamp}.png`, { type: f.type }) : f));
 };
-$('hist').onclick = async () => {
-  const t = $('transcript');
-  t.style.display = 'block'; $('log').style.display = 'none';
+const sec = $('main');
+sec.ondragover = e => { e.preventDefault(); if (sel && sel.online) sec.classList.add('drop'); };
+sec.ondragleave = e => { if (!sec.contains(e.relatedTarget)) sec.classList.remove('drop'); };
+sec.ondrop = e => { e.preventDefault(); sec.classList.remove('drop'); upload([...e.dataTransfer.files]); };
+
+$('q').oninput = drawPeers;
+$('q').onkeydown = e => {
+  if (e.key === 'Enter') { const d = $('peers').querySelector('[data-a]'); if (d) { d.click(); $('q').value = ''; drawPeers(); } }
+  if (e.key === 'Escape') { $('q').value = ''; drawPeers(); $('text').focus(); }
+};
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); $('q').focus(); $('q').select(); } });
+addEventListener('hashchange', () => {
+  wanted = decodeURIComponent(location.hash.slice(1));
+  const p = known().find(p => disp(p.addr) === wanted);
+  if (p && (!sel || p.addr !== sel.addr)) select(p);
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { drawLog(); drawPeers(); } });
+if (window.Notification && isSecureContext && Notification.permission === 'default') {
+  $('notif').hidden = false;
+  $('notif').onclick = () => Notification.requestPermission().then(() => $('notif').hidden = true);
+}
+
+function showLog() { $('transcript').style.display = 'none'; $('log').style.display = ''; }
+function drawTranscript() {
+  const { d, who } = transcript, q = $('tq') ? $('tq').value.toLowerCase() : '';
+  const items = q ? d.items.filter(i => i.text.toLowerCase().includes(q)) : d.items;
+  let html = '', tools = [];
+  const flush = () => {
+    if (tools.length) html += q ? tools.join('') : `<details><summary>${tools.length} tool call${tools.length > 1 ? 's' : ''}</summary>${tools.join('')}</details>`;
+    tools = [];
+  };
+  for (const i of items) {
+    if (i.role === 'tool') { tools.push(`<div class="tool">${esc(i.text)}</div>`); continue; }
+    flush();
+    html += `<div class="item ${i.role}">${md(i.text)}</div>`;
+  }
+  flush();
+  $('items').innerHTML = html || '<p>nothing matches</p>';
+}
+async function loadTranscript() {
+  const t = $('transcript'), who = sel;
+  showLog(); t.style.display = 'block'; $('log').style.display = 'none';
   t.innerHTML = '<p>fetching transcript…</p>';
-  const r = await fetch('/api/transcript?to=' + encodeURIComponent(sel.addr));
+  const r = await fetch('/api/transcript?to=' + encodeURIComponent(who.addr));
   const d = await r.json();
-  if (!r.ok) { t.innerHTML = `<p>${esc(d.error)}</p>`; return; }
-  t.innerHTML = `<p><b>${sel.disp}</b> in <code>${esc(d.cwd)}</code> · ${d.items.length} entries. <a href="/api/transcript?to=${encodeURIComponent(sel.addr)}&raw=1">download .jsonl</a>. To continue it on your machine: <code>gc fork ${sel.disp}</code>, or with the file: <code>claude --resume ${sel.disp.replace(':', '-')}.jsonl --fork-session</code>
-    <button type="button" onclick="this.closest('#transcript').style.display='none';document.getElementById('log').style.display=''">back</button></p>` +
-    d.items.map(i => i.role === 'tool' ? `<div class="tool">${esc(i.text)}</div>` : `<p class="${i.role}">${esc(i.text)}</p>`).join('');
-};
+  if (sel !== who) return;
+  if (!r.ok) { t.innerHTML = `<p>${esc(d.error)} <button onclick="showLog()">back</button></p>`; return; }
+  transcript = { d, who };
+  const fork = `gc fork ${who.disp}`;
+  t.innerHTML = `<div class="bar"><button id="tback">back to chat</button><button id="tref">refresh</button>
+    <input id="tq" placeholder="search transcript">
+    <span><b>${esc(who.disp)}</b> in <code>${esc(d.cwd)}</code> · ${d.items.length} entries ·
+    <a href="/api/transcript?to=${encodeURIComponent(who.addr)}&raw=1">download .jsonl</a></span>
+    <span>continue it locally: <code>${esc(fork)}</code> <button class="copy" style="opacity:1;position:static" data-text="${esc(fork)}">copy</button></span></div><div id="items"></div>`;
+  $('tback').onclick = showLog;
+  $('tref').onclick = loadTranscript;
+  $('tq').oninput = drawTranscript;
+  drawTranscript();
+  t.scrollTop = t.scrollHeight;
+}
+$('hist').onclick = loadTranscript;
 poll();
 </script>
 </body>
