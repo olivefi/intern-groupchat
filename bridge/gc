@@ -159,6 +159,27 @@ def set_shared(sid, entry):
     json.dump(d, open(p, "w"))
 
 
+def resolve(names):
+    """turn share names into tailscale logins via the hub's directory of users; refuse unknown or ambiguous ones"""
+    try:
+        r = ctrl({"cmd": "resolve", "names": names}, timeout=15)
+    except (OSError, ValueError, SystemExit):
+        print("note: could not check the names with the hub (bridge or hub not up to date?); sharing them as given")
+        return names
+    who = lambda l: f"{l} ({r['users'][l]})" if r["users"].get(l) else l
+    out, bad = [], []
+    for n in names:
+        m = r["names"][n]
+        if len(m) == 1:
+            out.append(m[0])
+        else:
+            bad.append(f"  {n}: " + (f"could mean {', '.join(map(who, m))}" if m else "nobody by that name has used the hub"))
+    if bad:
+        sys.exit("gc: not shared, names need fixing:\n" + "\n".join(bad) + "\nknown users:\n" +
+                 "\n".join("  " + who(l) for l in sorted(r["users"])))
+    return out
+
+
 def render(jsonl):
     """readable markdown of a transcript: user/assistant text, tool calls as one-liners"""
     out = []
@@ -208,6 +229,7 @@ def main(argv):
         hist, alias = flag(args, "--with-history"), flag(args, "--as", True)
         r = session(args)
         args or sys.exit("gc: share with whom? names, logins or '*'")
+        args = resolve(args)
         old = shared().get(r["sessionId"])
         set_shared(r["sessionId"], {"acl": args, "history": hist, "name": alias or (isinstance(old, dict) and old.get("name")) or None})
         name = share_name(r)

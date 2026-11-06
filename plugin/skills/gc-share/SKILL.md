@@ -8,8 +8,10 @@ person's `/peers` as `<you>:<session name>`; they can then message it, and you s
 messages here like any peer message. Remote sessions shared with you appear as
 `<user>:<name>`. Files sent to you land in `~/.gc/inbox/<user>/`.
 
-- Share: `"$HOME/.gc/bin/gc" share <names...>` — names are first names of
-  tailscale logins (`alice`), full logins (`alice@github`), or `*` for everyone on the hub.
+- Share: `"$HOME/.gc/bin/gc" share <names...>` — pass the names exactly as the user said them
+  (`joe`, `alice`), full logins (`alice@github`), or `*` for everyone on the hub.
+  The hub resolves them to tailscale logins; don't guess logins yourself. If a name is unknown or
+  ambiguous, the command refuses and lists the known users: ask the user which one they meant.
 - Share with history: add `--with-history` — then those people can also fetch this
   session's full transcript (`gc transcript`) or fork it (`gc fork`). Use it when the user
   says "with history", "including history", "so they can fork it", "give them the full context".

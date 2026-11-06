@@ -155,8 +155,8 @@ function drawPeers() {
     return `<div class="grp" data-g="${esc(g)}" data-drop="${esc(g)}">${custom.has(g) ? '<button class="mv" title="rename or delete folder">⋯</button>' : ''}${shut ? '▸' : '▾'} ${esc(g)}${shut && n ? `<span class="badge">${n}</span>` : ''}</div>` +
       (shut ? '' : !groups[g].length ? `<div class="none hint" data-drop="${esc(g)}">drag chats here</div>` : groups[g].sort((a, b) => b.online - a.online).map(p => {
         const n = unread(p.addr);
-        const info = p.online ? [p.machine, p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
-        return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" data-drop="${esc(g)}" draggable="true" title="${esc(info)}"><button class="mv" title="move to a folder">⋯</button>${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
+        const info = p.online ? [p.machine, p.shared_with && sharedWith(p), p.cwd, p.history && 'history'].filter(Boolean).join(' · ') : 'offline';
+        return `<div class="${sel && sel.addr === p.addr ? 'sel' : ''} ${p.online ? '' : 'off'}" data-a="${esc(p.addr)}" data-drop="${esc(g)}" draggable="true" title="${esc(info)}"><button class="mv" title="move to a folder">⋯</button>${p.online ? '' : '<button class="mv del" title="delete this chat">×</button>'}${n ? `<span class="badge">${n}</span>` : ''}${esc(disp(p.addr))}<small>${esc(info)}</small></div>`;
       }).join(''));
   }).join('') || `<div class="none">${q ? 'no match' : 'no shared sessions online'}</div>`;
   for (const d of $('peers').querySelectorAll('[data-g]')) d.onclick = e => {
@@ -166,12 +166,25 @@ function drawPeers() {
   };
   for (const d of $('peers').querySelectorAll('[data-a]')) d.onclick = e => {
     const a = d.dataset.a;
+    if (e.target.classList.contains('del')) return forget(a);
     if (!e.target.classList.contains('mv')) return select(known().find(p => p.addr === a));
     const f = prompt(`Folder for ${disp(a)} (empty: back under ${owner(a) === me ? 'mine' : owner(a).split('@')[0]})`, folders[a] || '');
     if (f !== null) setFolder(a, f.trim());
   };
   const total = known().reduce((s, p) => s + unread(p.addr), 0);
   document.title = (total ? `(${total}) ` : '') + 'intern-groupchat';
+}
+function sharedWith(p) {
+  const who = p.shared_with.map(u => u === '*' ? 'everyone' : u.split('@')[0]);
+  return who.length ? 'shared with ' + who.join(', ') : 'not shared';
+}
+async function forget(a) {
+  if (!confirm(`Delete the chat with ${disp(a)}? Its messages are removed from the hub.`)) return;
+  await post('/api/forget?addr=' + encodeURIComponent(a));
+  msgs = msgs.filter(m => conv(m) !== a);
+  delete read[a]; delete folders[a]; store('gc-read', read); store('gc-folders', folders);
+  if (sel && sel.addr === a) { sel = null; wanted = ''; $('log').innerHTML = ''; history.replaceState(null, '', '#'); }
+  drawPeers();
 }
 function setFolder(a, f) {
   f ? folders[a] = f : delete folders[a];

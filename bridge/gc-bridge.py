@@ -197,7 +197,7 @@ class Bridge:
                         await self.deliver(m)
                     elif m["t"] == "transcript_req":
                         await self.send_transcript(m)
-                    elif m["t"] == "transcript" or (m["t"] == "error" and m.get("req")):
+                    elif m["t"] in ("transcript", "resolved") or (m["t"] == "error" and m.get("req")):
                         self.resolve(m["req"], m)
                     elif m["t"] == "error":
                         await self.notify(m.get("re"), f"gc: {m['msg']}")
@@ -405,6 +405,12 @@ class Bridge:
                 await self.hub({"t": "file", "to": addr, "from": m["from"], "name": os.path.basename(m["path"]), "data": data})
             elif m["cmd"] == "transcript":
                 res.update(await self.fetch_transcript(m["to"]))
+            elif m["cmd"] == "resolve":
+                req = uuid.uuid4().hex[:8]
+                fut = self.pending[req] = asyncio.get_running_loop().create_future()
+                await self.hub({"t": "resolve", "names": m["names"], "req": req})
+                r = await asyncio.wait_for(fut, 10)
+                res.update(names=r["names"], users=r["users"])
         except Exception as e:
             res = {"ok": False, "error": str(e)}
         w.write((json.dumps(res) + "\n").encode())
