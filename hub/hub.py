@@ -7,6 +7,7 @@ PORT = int(os.environ.get("GC_PORT", 7777))
 HTTP_PORT = int(os.environ.get("GC_HTTP_PORT", 7778))
 STORE = os.path.expanduser(os.environ.get("GC_STORE", "~/.gc-hub/store"))
 ALIASES = os.path.expanduser(os.environ.get("GC_ALIASES", "~/.gc-hub/aliases.json"))  # {"oliver": "olivefi@github"}
+USERS = os.path.expanduser(os.environ.get("GC_USERS", "~/.gc-hub/users.json"))  # login -> display name, of everyone who connected
 DEV_TRUST_HELLO = os.environ.get("GC_DEV_TRUST_HELLO") == "1"  # local testing only: take the user from hello
 MAX_LINE = 96 * 1024 * 1024
 COMMIT = subprocess.run(["git", "-C", os.path.dirname(os.path.abspath(__file__)), "rev-parse", "HEAD"],
@@ -22,9 +23,40 @@ def ts(*args):
 
 def whois(ip):
     try:
-        return json.loads(ts("whois", "--json", ip))["UserProfile"]["LoginName"]
+        p = json.loads(ts("whois", "--json", ip))["UserProfile"]
     except Exception:
         return None
+    remember(p["LoginName"], p.get("DisplayName", ""))
+    return p["LoginName"]
+
+
+def load_users():
+    try:
+        return json.load(open(USERS))
+    except (OSError, ValueError):
+        return {}
+
+
+users = load_users()
+
+
+def remember(login, name):
+    if users.get(login) != name:
+        users[login] = name
+        os.makedirs(os.path.dirname(USERS), exist_ok=True)
+        with open(USERS + ".tmp", "w") as f:
+            json.dump(users, f, indent=1)
+        os.replace(USERS + ".tmp", USERS)
+
+
+def resolve(name):
+    """logins a share name could mean: login, its local part, an alias, or a word / the whole of the display name"""
+    n = name.lower()
+    if n == "*":
+        return ["*"]
+    alias = aliases().get(n, "").lower()
+    return sorted(l for l, d in users.items()
+                  if n in (l.lower(), l.split("@")[0].lower(), d.lower()) or l.lower() == alias or n in d.lower().split())
 
 
 BIND = os.environ.get("GC_BIND")
@@ -82,9 +114,14 @@ def own(c, user):
     return c.user == user and c.machine != "web"  # your browser tab is not a peer, unless it has messaged you
 
 
+def shared_with(c, n):
+    return sorted({*c.sessions[n]["acl"], *(u for a, u in contacts if a == addr(c, n))})
+
+
 def visible(user):
     return [{"addr": addr(c, n), "user": c.user, "machine": c.machine, "name": n,
-             "history": s["history"] or own(c, user), "cwd": s.get("cwd")}
+             "history": s["history"] or own(c, user), "cwd": s.get("cwd"),
+             **({"shared_with": shared_with(c, n)} if own(c, user) else {})}
             for c in conns for n, s in c.sessions.items()
             if own(c, user) or in_acl(user, s["acl"]) or (addr(c, n), user) in contacts]
 
@@ -141,6 +178,8 @@ async def relay(c, m):
         else:
             tc, tname = target
             await tc.send({"t": "transcript_req", "to": tname, "req": m["req"], "reply_user": c.user, "reply_machine": c.machine})
+    elif m["t"] == "resolve":
+        await c.send({"t": "resolved", "req": m["req"], "names": {n: resolve(n) for n in m["names"]}, "users": users})
     elif m["t"] in ("transcript", "error") and m.get("reply_user"):
         rc = conn_of(m["reply_user"], m["reply_machine"])
         if rc:
@@ -155,6 +194,8 @@ async def handle(reader, writer):
     try:
         hello = json.loads(await reader.readline())
         user = hello.get("user") if DEV_TRUST_HELLO else whois(ip)
+        if user and DEV_TRUST_HELLO:
+            remember(user, hello.get("display_name", ""))
         if not user:
             writer.write(b'{"t":"error","msg":"unknown tailscale identity"}\n')
             await writer.drain()

@@ -85,11 +85,19 @@ class WebConn(hub.Conn):
         with self.cv:
             self.seq += 1
             self.queue = (self.queue + [{"seq": self.seq, "ts": time.time(), **item}])[-300:]
-            os.makedirs(HISTORY, exist_ok=True)
-            with open(self.path + ".tmp", "w") as f:
-                json.dump({"queue": self.queue, "seq": self.seq}, f)
-            os.replace(self.path + ".tmp", self.path)
+            self.save()
             self.cv.notify_all()
+
+    def forget(self, a):
+        with self.cv:
+            self.queue = [m for m in self.queue if (m.get("to") if m["from"] in ("me", "hub") else m["from"]) != a]
+            self.save()
+
+    def save(self):
+        os.makedirs(HISTORY, exist_ok=True)
+        with open(self.path + ".tmp", "w") as f:
+            json.dump({"queue": self.queue, "seq": self.seq}, f)
+        os.replace(self.path + ".tmp", self.path)
 
     def wait(self, after, timeout):
         with self.cv:
@@ -219,6 +227,8 @@ class Handler(hub.Files):
             link = run(hub.relay(c, {"t": "file", "to": q["to"], "from": "web", "name": name, "data": base64.b64encode(body).decode()}))
             if link:
                 c.push({"from": "me", "to": q["to"], "text": f"sent file {name}", "url": link})
+        elif url.path == "/api/forget":
+            c.forget(q["addr"])
         else:
             return self.reply(404, {"error": "no such endpoint"})
         self.reply(200, {"ok": True})
