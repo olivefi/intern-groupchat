@@ -49,14 +49,48 @@ def shared_entry(v):
     return (v, False) if isinstance(v, list) else (v.get("acl", []), bool(v.get("history")))
 
 
+TITLES = {}  # transcript path -> (bytes scanned, latest ai-title)
+
+
+def ai_title(rec):
+    """the title Claude Code shows in the terminal; read incrementally since transcripts only grow"""
+    path = transcript_path(rec)
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None
+    off, title = TITLES.get(path, (0, None))
+    if size > off:
+        with open(path, "rb") as f:
+            f.seek(off)
+            data = f.read()
+        end = data.rfind(b"\n") + 1  # complete lines only
+        for line in data[:end].splitlines():
+            if b'"ai-title"' in line:
+                try:
+                    title = json.loads(line).get("aiTitle") or title
+                except ValueError:
+                    pass
+        TITLES[path] = (off + end, title)
+    return title
+
+
+def session_name(r, shared):
+    """`gc share --as` name, else a name the user gave, else the terminal title as a slug, else the registry name"""
+    v = shared.get(r.get("sessionId"))
+    if isinstance(v, dict) and v.get("name") and v["name"] != r["name"]:
+        return v["name"]
+    title = r.get("nameSource") in (None, "auto", "derived") and ai_title(r)
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:48] if title else r["name"]
+
+
 def local_sessions():
-    """real sessions on this machine, by name (the share name from `gc share --as`, if any)"""
+    """real sessions on this machine, by the name they are shared under"""
     out, shared = {}, load(SHARED, {})
     for f in glob.glob(f"{SESS}/*.json"):
         r = load(f, None)
         if r and r.get("pid", 0) < FAKE_BASE and os.path.exists(r.get("messagingSocketPath", "")):
-            v = shared.get(r.get("sessionId"))
-            out[(isinstance(v, dict) and v.get("name")) or r["name"]] = r
+            out[session_name(r, shared)] = r
     return out
 
 
@@ -111,6 +145,7 @@ class Bridge:
         self.published = None
         self.http_port = 7778
         self.last_error = None
+        self.pinged = 0
         self.hub_commit = None
 
     # ---- hub link -------------------------------------------------------------------
@@ -147,7 +182,8 @@ class Bridge:
                 self.w = w
                 await self.hub({"t": "hello", "user": CFG.get("user"), "machine": MACHINE})
                 self.published = None
-                while line := await r.readline():
+                # the link can die silently behind the SOCKS proxy; the hub answers our pings, so 90 s of silence = dead
+                while line := await asyncio.wait_for(r.readline(), 90):
                     m = json.loads(line)
                     if m["t"] == "welcome":
                         self.user = m["user"]
@@ -166,9 +202,12 @@ class Bridge:
                     elif m["t"] == "error":
                         await self.notify(m.get("re"), f"gc: {m['msg']}")
             except Exception as e:
-                if str(e) != self.last_error:  # log each distinct failure once, not every 3 s
+                e = str(e) or type(e).__name__
+                if e != self.last_error:  # log each distinct failure once, not every 3 s
                     print("hub:", e, flush=True)
-                self.last_error = str(e)
+                self.last_error = e
+            if self.w:
+                self.w.close()
             self.w = None
             await asyncio.sleep(3)
 
@@ -183,6 +222,9 @@ class Bridge:
                 if pub != self.published:
                     await self.hub({"t": "publish", "sessions": pub})
                     self.published = pub
+                if time.time() - self.pinged > 30:
+                    await self.hub({"t": "ping"})
+                    self.pinged = time.time()
             await asyncio.sleep(2)
 
     # ---- remote sessions as local peers --------------------------------------------------
@@ -354,6 +396,8 @@ class Bridge:
                            peers=[display(a) for a in self.peers],
                            history=[display(a) for a, s in self.peers.items() if s.get("history")],
                            shared=load(SHARED, {}))
+            elif m["cmd"] == "name":
+                res["name"] = next((n for n, r in local_sessions().items() if r["sessionId"] == m["sid"]), None)
             elif m["cmd"] == "send-file":
                 addr = self.addr_of(m["to"])
                 with open(m["path"], "rb") as f:

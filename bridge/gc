@@ -141,8 +141,12 @@ def shared():
 
 
 def share_name(r):
-    v = shared().get(r["sessionId"])
-    return (isinstance(v, dict) and v.get("name")) or r["name"]
+    """the name the bridge shares this session under (it knows the terminal title)"""
+    try:
+        return ctrl({"cmd": "name", "sid": r["sessionId"]})["name"] or r["name"]
+    except (OSError, ValueError):
+        v = shared().get(r["sessionId"])
+        return (isinstance(v, dict) and v.get("name")) or r["name"]
 
 
 def set_shared(sid, entry):
@@ -204,8 +208,9 @@ def main(argv):
         hist, alias = flag(args, "--with-history"), flag(args, "--as", True)
         r = session(args)
         args or sys.exit("gc: share with whom? names, logins or '*'")
-        name = alias or share_name(r)
-        set_shared(r["sessionId"], {"acl": args, "history": hist, "name": name})
+        old = shared().get(r["sessionId"])
+        set_shared(r["sessionId"], {"acl": args, "history": hist, "name": alias or (isinstance(old, dict) and old.get("name")) or None})
+        name = share_name(r)
         print(f"shared as '{name}' with {', '.join(args)}" + (" (with history)" if hist else ""))
         if not alias and r.get("nameSource") in (None, "auto", "derived") and name == r["name"]:
             print("note: that is an automatic name; give it a short meaningful one with --as <name>")

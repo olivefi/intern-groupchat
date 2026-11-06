@@ -169,6 +169,8 @@ async def handle(reader, writer):
                 c.sessions = {s["name"]: {"acl": s.get("acl", []), "history": bool(s.get("history")), "cwd": s.get("cwd")}
                               for s in m["sessions"]}
                 await push_peers()
+            elif m["t"] == "ping":
+                await c.send({"t": "pong"})
             else:
                 await relay(c, m)
     except (json.JSONDecodeError, ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError):

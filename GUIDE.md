@@ -25,8 +25,8 @@ Nothing runs as root. The pieces live in `~/.gc/` and start themselves whenever 
 - You are your Tailscale login's first part: `alice@github` → `alice`.
 - A shared session is `<owner>:<session name>`, e.g. `oli:pr-5`, `oli:repo-agent`.
 - Give your own sessions a name so others can recognise them: `claude --name pr-123`, or
-  `/rename pr-123` inside. If you share an unnamed session, the agent picks a short share name
-  for it (`gc share --as <name>`); just say what you'd prefer if it guesses badly.
+  `/rename pr-123` inside. Otherwise it is shared under its terminal title
+  (`ui-usability-improvements`), or ask the agent to share it under another name (`gc share --as <name>`).
 
 ## Talking to a shared session
 
